@@ -494,4 +494,82 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
       assert.equal(result3, true, "off-by-one up should pass")
     })
   })
+
+  context('unsafe time change', () => {
+    const neededSupport = pct16(1)
+    const minimumAcceptanceQuorum = pct16(1)
+
+    beforeEach(async () => {
+      token = await MiniMeToken.new(ZERO_ADDRESS, ZERO_ADDRESS, 0, 'n', 18, 'n', true)
+      await token.generateTokens(holder20, bigExp(20, 18))
+      await token.generateTokens(holder29, bigExp(29, 18))
+      await token.generateTokens(holder51, bigExp(51, 18))
+      await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, votingDuration)
+      executionTarget = await ExecutionTarget.new()
+    })
+
+    for (const newVoteTime of [0, 1500, 500]) {
+      it(`change vote time to ${newVoteTime}`, async () => {
+      const receipt = await voting.unsafelyChangeVoteTime(newVoteTime)
+
+      assertAmountOfEvents(receipt, 'ChangeVoteTime')
+      assert.equal(await voting.voteTime(), newVoteTime, 'should have changed acceptance time')
+    })
+    }
+
+    it('re-open finished vote through changing of voting time', async () => {
+      await voting.unsafelyChangeVoteTime(1000)
+
+      const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
+      await voting.mockIncreaseTime(1001)
+      voteState = await voting.getVote(voteId)
+
+      assert.isFalse(voteState[0], 'vote should be closed')
+      assert.isFalse(voteState[1], 'vote should not be executed')
+
+      await voting.unsafelyChangeVoteTime(1500)
+      voteState = await voting.getVote(voteId)
+
+      assert.isTrue(voteState[0], 'vote should be open after increasing of voting time')
+      assert.isFalse(voteState[1], 'vote should not be executed')
+    })
+
+    it('close vote through changing of voting time', async () => {
+      await voting.unsafelyChangeVoteTime(1500)
+
+      const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
+      voteState = await voting.getVote(voteId)
+
+      assert.isTrue(voteState[0], 'vote should be open')
+      assert.isFalse(voteState[1], 'vote should not be executed')
+
+      await voting.unsafelyChangeVoteTime(0)
+      voteState = await voting.getVote(voteId)
+
+      assert.isFalse(voteState[0], 'vote should be closed after time decreasing')
+      assert.isFalse(voteState[1], 'vote should not be executed')
+    })
+
+    it('changing time does not affect executed votes', async () => {
+      await voting.unsafelyChangeVoteTime(1000)
+
+      const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
+      await voting.vote(voteId, true, false, { from: holder20 })
+      await voting.vote(voteId, true, false, { from: holder29 })
+      await voting.vote(voteId, true, false, { from: holder51 })
+      await voting.mockIncreaseTime(1001)
+      await voting.executeVote(voteId)
+
+      voteState = await voting.getVote(voteId)
+
+      assert.isFalse(voteState[0], 'vote should be closed after execution')
+      assert.isTrue(voteState[1], 'vite should be executed')
+
+      await voting.unsafelyChangeVoteTime(1500)
+      voteState = await voting.getVote(voteId)
+
+      assert.isFalse(voteState[0], 'vote should be closed after time increasing')
+      assert.isTrue(voteState[1], 'vite should be executed')
+    })
+  })
 })
