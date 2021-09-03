@@ -29,6 +29,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
     CREATE_VOTES_ROLE = await votingBase.CREATE_VOTES_ROLE()
     MODIFY_SUPPORT_ROLE = await votingBase.MODIFY_SUPPORT_ROLE()
     MODIFY_QUORUM_ROLE = await votingBase.MODIFY_QUORUM_ROLE()
+    UNSAFELY_MODIFY_VOTE_TIME_ROLE = await votingBase.UNSAFELY_MODIFY_VOTE_TIME_ROLE()
   })
 
   beforeEach('deploy DAO with Voting app', async () => {
@@ -38,6 +39,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
     await acl.createPermission(ANY_ENTITY, voting.address, CREATE_VOTES_ROLE, root, { from: root })
     await acl.createPermission(ANY_ENTITY, voting.address, MODIFY_SUPPORT_ROLE, root, { from: root })
     await acl.createPermission(ANY_ENTITY, voting.address, MODIFY_QUORUM_ROLE, root, { from: root })
+    await acl.createPermission(ANY_ENTITY, voting.address, UNSAFELY_MODIFY_VOTE_TIME_ROLE, root, { from: root })
   })
 
   context('normal token supply, common tests', () => {
