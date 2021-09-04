@@ -508,14 +508,26 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
       executionTarget = await ExecutionTarget.new()
     })
 
-    for (const newVoteTime of [0, 1500, 500]) {
-      it(`change vote time to ${newVoteTime}`, async () => {
-      const receipt = await voting.unsafelyChangeVoteTime(newVoteTime)
+    it('simple change vote time', async () => {
+      const zeroTime = 0
+      const increasingTime = 1500
+      const decreasingTime = 500
 
+      // Allow to setting to zero
+      receipt = await voting.unsafelyChangeVoteTime(zeroTime)
       assertAmountOfEvents(receipt, 'ChangeVoteTime')
-      assert.equal(await voting.voteTime(), newVoteTime, 'should have changed acceptance time')
+      assert.equal(await voting.voteTime(), zeroTime, 'should have changed acceptance time')
+
+      // Allow to increasing voteTime
+      receipt = await voting.unsafelyChangeVoteTime(increasingTime)
+      assertAmountOfEvents(receipt, 'ChangeVoteTime')
+      assert.equal(await voting.voteTime(), increasingTime, 'should have changed acceptance time')
+
+      // Allow to decreasing voteTime
+      receipt = await voting.unsafelyChangeVoteTime(decreasingTime)
+      assertAmountOfEvents(receipt, 'ChangeVoteTime')
+      assert.equal(await voting.voteTime(), decreasingTime, 'should have changed acceptance time')
     })
-    }
 
     it('re-open finished vote through changing of voting time', async () => {
       await voting.unsafelyChangeVoteTime(1000)
