@@ -17,31 +17,38 @@
     "/test"
   ],
   "scripts": {
-    "console": "buidler console",
-    "compile": "buidler compile --force",
-    "devchain": "buidler node",
-    "build": "cd app && yarn build",
+    "postinstall": "patch-package",
+    "console": "hardhat console",
+    "compile": "hardhat compile --force",
+    "devchain": "hardhat node",
+    "build": "cd app && yarn install && yarn build",
     "lint": "solium --dir ./contracts",
-    "test": "buidler test",
-    "test:gas": "REPORT_GAS=true buidler test --network localhost",
-    "coverage": "buidler coverage --network coverage",
-    "abi:extract": "buidler-extract --output abi/ --keys abi"
+    "test": "hardhat test",
+    "test:gas": "REPORT_GAS=true hardhat test --network hardhat",
+    "coverage": "hardhat coverage --testfiles test",
+    "abi:extract": "hardhat export-abi"
   },
   "dependencies": {
     "@aragon/minime": "1.0.0",
     "@aragon/os": "4.4.0"
   },
   "devDependencies": {
+    "patch-package": "^6.4.7",
     "@aragon/contract-helpers-test": "^0.1.0",
-    "@nomiclabs/buidler": "^1.4.3",
-    "@nomiclabs/buidler-ganache": "^1.3.3",
-    "@nomiclabs/buidler-truffle5": "^1.3.4",
-    "@nomiclabs/buidler-web3": "^1.3.4",
-    "buidler-extract": "^1.0.0",
-    "buidler-gas-reporter": "^0.1.3",
+    "@aragon/hardhat-aragon": "^1.0.0",
+    "@aragon/hardhat-config": "^1.0.1",
+    "@nomiclabs/hardhat-ganache": "^2.0.1",
+    "@nomiclabs/hardhat-truffle5": "^2.0.5",
+    "@nomiclabs/hardhat-web3": "^2.0.0",
+    "@nomiclabs/hardhat-ethers": "^2.0.2",
+    "@nomiclabs/hardhat-etherscan": "^2.1.6",
+    "hardhat-abi-exporter": "^2.8.0",
+    "hardhat-gas-reporter": "^1.0.8",
     "chai": "^4.2.0",
+    "ethers": "^5.4.7",
+    "hardhat": "^2.6.5",
     "solidity-coverage": "^0.7.9",
     "solium": "^1.2.5",
-    "web3": "^1.2.11"
+    "web3": "^1.3.0"
   }
 }
