@@ -20,6 +20,7 @@ contract Voting is IForwarder, AragonApp {
     bytes32 public constant CREATE_VOTES_ROLE = keccak256("CREATE_VOTES_ROLE");
     bytes32 public constant MODIFY_SUPPORT_ROLE = keccak256("MODIFY_SUPPORT_ROLE");
     bytes32 public constant MODIFY_QUORUM_ROLE = keccak256("MODIFY_QUORUM_ROLE");
+    bytes32 public constant UNSAFELY_MODIFY_VOTE_TIME_ROLE = keccak256("UNSAFELY_MODIFY_VOTE_TIME_ROLE");
 
     uint64 public constant PCT_BASE = 10 ** 18; // 0% = 0; 1% = 10^16; 100% = 10^18
 
@@ -63,6 +64,7 @@ contract Voting is IForwarder, AragonApp {
     event ExecuteVote(uint256 indexed voteId);
     event ChangeSupportRequired(uint64 supportRequiredPct);
     event ChangeMinQuorum(uint64 minAcceptQuorumPct);
+    event ChangeVoteTime(uint64 voteTime);
 
     modifier voteExists(uint256 _voteId) {
         require(_voteId < votesLength, ERROR_NO_VOTE);
@@ -115,6 +117,19 @@ contract Voting is IForwarder, AragonApp {
         minAcceptQuorumPct = _minAcceptQuorumPct;
 
         emit ChangeMinQuorum(_minAcceptQuorumPct);
+    }
+
+    /**
+    * @notice Change vote time to `_voteTime` sec. The change affects all existing unexecuted votes, so be really careful with it
+    * @param _voteTime New vote time
+    */
+    function unsafelyChangeVoteTime(uint64 _voteTime)
+        external
+        authP(UNSAFELY_MODIFY_VOTE_TIME_ROLE, arr(uint256(_voteTime), uint256(voteTime)))
+    {
+        voteTime = _voteTime;
+
+        emit ChangeVoteTime(_voteTime);
     }
 
     /**

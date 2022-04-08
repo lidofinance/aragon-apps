@@ -29,6 +29,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
     CREATE_VOTES_ROLE = await votingBase.CREATE_VOTES_ROLE()
     MODIFY_SUPPORT_ROLE = await votingBase.MODIFY_SUPPORT_ROLE()
     MODIFY_QUORUM_ROLE = await votingBase.MODIFY_QUORUM_ROLE()
+    UNSAFELY_MODIFY_VOTE_TIME_ROLE = await votingBase.UNSAFELY_MODIFY_VOTE_TIME_ROLE()
   })
 
   beforeEach('deploy DAO with Voting app', async () => {
@@ -38,6 +39,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
     await acl.createPermission(ANY_ENTITY, voting.address, CREATE_VOTES_ROLE, root, { from: root })
     await acl.createPermission(ANY_ENTITY, voting.address, MODIFY_SUPPORT_ROLE, root, { from: root })
     await acl.createPermission(ANY_ENTITY, voting.address, MODIFY_QUORUM_ROLE, root, { from: root })
+    await acl.createPermission(ANY_ENTITY, voting.address, UNSAFELY_MODIFY_VOTE_TIME_ROLE, root, { from: root })
   })
 
   context('normal token supply, common tests', () => {
@@ -490,6 +492,96 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
 
       const result3 = await voting.isValuePct(pct16(50).add(bn(1)), pct16(100), pct16(50))
       assert.equal(result3, true, "off-by-one up should pass")
+    })
+  })
+
+  context('unsafe time change', () => {
+    const neededSupport = pct16(1)
+    const minimumAcceptanceQuorum = pct16(1)
+
+    beforeEach(async () => {
+      token = await MiniMeToken.new(ZERO_ADDRESS, ZERO_ADDRESS, 0, 'n', 18, 'n', true)
+      await token.generateTokens(holder20, bigExp(20, 18))
+      await token.generateTokens(holder29, bigExp(29, 18))
+      await token.generateTokens(holder51, bigExp(51, 18))
+      await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, votingDuration)
+      executionTarget = await ExecutionTarget.new()
+    })
+
+    it('simple change vote time', async () => {
+      const zeroTime = 0
+      const increasingTime = 1500
+      const decreasingTime = 500
+
+      // Allow to setting to zero
+      receipt = await voting.unsafelyChangeVoteTime(zeroTime)
+      assertAmountOfEvents(receipt, 'ChangeVoteTime')
+      assert.equal(await voting.voteTime(), zeroTime, 'should have changed acceptance time')
+
+      // Allow to increasing voteTime
+      receipt = await voting.unsafelyChangeVoteTime(increasingTime)
+      assertAmountOfEvents(receipt, 'ChangeVoteTime')
+      assert.equal(await voting.voteTime(), increasingTime, 'should have changed acceptance time')
+
+      // Allow to decreasing voteTime
+      receipt = await voting.unsafelyChangeVoteTime(decreasingTime)
+      assertAmountOfEvents(receipt, 'ChangeVoteTime')
+      assert.equal(await voting.voteTime(), decreasingTime, 'should have changed acceptance time')
+    })
+
+    it('re-open finished vote through changing of voting time', async () => {
+      await voting.unsafelyChangeVoteTime(1000)
+
+      const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
+      await voting.mockIncreaseTime(1001)
+      voteState = await voting.getVote(voteId)
+
+      assert.isFalse(voteState[0], 'vote should be closed')
+      assert.isFalse(voteState[1], 'vote should not be executed')
+
+      await voting.unsafelyChangeVoteTime(1500)
+      voteState = await voting.getVote(voteId)
+
+      assert.isTrue(voteState[0], 'vote should be open after increasing of voting time')
+      assert.isFalse(voteState[1], 'vote should not be executed')
+    })
+
+    it('close vote through changing of voting time', async () => {
+      await voting.unsafelyChangeVoteTime(1500)
+
+      const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
+      voteState = await voting.getVote(voteId)
+
+      assert.isTrue(voteState[0], 'vote should be open')
+      assert.isFalse(voteState[1], 'vote should not be executed')
+
+      await voting.unsafelyChangeVoteTime(0)
+      voteState = await voting.getVote(voteId)
+
+      assert.isFalse(voteState[0], 'vote should be closed after time decreasing')
+      assert.isFalse(voteState[1], 'vote should not be executed')
+    })
+
+    it('changing time does not affect executed votes', async () => {
+      await voting.unsafelyChangeVoteTime(1000)
+
+      const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
+      await voting.vote(voteId, true, false, { from: holder20 })
+      await voting.vote(voteId, true, false, { from: holder29 })
+      await voting.vote(voteId, true, false, { from: holder51 })
+      await voting.mockIncreaseTime(1001)
+      await voting.executeVote(voteId)
+
+      voteState = await voting.getVote(voteId)
+
+      assert.isFalse(voteState[0], 'vote should be closed after execution')
+      assert.isTrue(voteState[1], 'vite should be executed')
+
+      await voting.unsafelyChangeVoteTime(1500)
+      voteState = await voting.getVote(voteId)
+
+      assert.isFalse(voteState[0], 'vote should be closed after time increasing')
+      assert.isTrue(voteState[1], 'vite should be executed')
     })
   })
 })
