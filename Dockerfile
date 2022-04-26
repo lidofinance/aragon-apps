@@ -21,4 +21,4 @@ EXPOSE 3001
 # HEALTHCHECK --interval=10s --timeout=3s \
 #     CMD curl -f http://localhost:3000/api/health || exit 1
 
-CMD ["yarn", "--cwd", "apps/voting/app", "start"]
+CMD ["yarn", "--cwd", "apps/voting/app", "start", "--public-url", "/voting"]
