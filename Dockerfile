@@ -16,7 +16,7 @@ COPY --from=build /app /app
 RUN apk add --no-cache curl=7.80.0-r0 rsync=3.2.3-r5 && chown -R node /app/apps/voting/app
 
 USER node
-EXPOSE 3000
+EXPOSE 3001
 
 # HEALTHCHECK --interval=10s --timeout=3s \
 #     CMD curl -f http://localhost:3000/api/health || exit 1
