@@ -295,6 +295,11 @@ async function loadVoteDescription(vote) {
   vote.description = ''
   vote.executionTargets = []
 
+  //broken vote evmscript
+  if (vote.id == 126) {
+    return vote;
+  }
+
   if (!vote.script || vote.script === EMPTY_CALLSCRIPT) {
     return vote
   }
