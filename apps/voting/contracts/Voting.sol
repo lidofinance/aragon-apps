@@ -54,6 +54,7 @@ contract Voting is IForwarder, AragonApp {
     uint64 public supportRequiredPct;
     uint64 public minAcceptQuorumPct;
     uint64 public voteTime;
+    uint64 public objectionTime;
 
     // We are mimicing an array, we use a mapping instead to make app upgrade more graceful
     mapping (uint256 => Vote) internal votes;
@@ -65,6 +66,7 @@ contract Voting is IForwarder, AragonApp {
     event ChangeSupportRequired(uint64 supportRequiredPct);
     event ChangeMinQuorum(uint64 minAcceptQuorumPct);
     event ChangeVoteTime(uint64 voteTime);
+    event ChangeObjectionTime(uint64 objectionTime);
 
     modifier voteExists(uint256 _voteId) {
         require(_voteId < votesLength, ERROR_NO_VOTE);
@@ -77,8 +79,12 @@ contract Voting is IForwarder, AragonApp {
     * @param _supportRequiredPct Percentage of yeas in casted votes for a vote to succeed (expressed as a percentage of 10^18; eg. 10^16 = 1%, 10^18 = 100%)
     * @param _minAcceptQuorumPct Percentage of yeas in total possible votes for a vote to succeed (expressed as a percentage of 10^18; eg. 10^16 = 1%, 10^18 = 100%)
     * @param _voteTime Seconds that a vote will be open for token holders to vote (unless enough yeas or nays have been cast to make an early decision)
+    * @param _appealTime Seconds that a vote will be open for token holders to appeal the decision
     */
-    function initialize(MiniMeToken _token, uint64 _supportRequiredPct, uint64 _minAcceptQuorumPct, uint64 _voteTime) external onlyInit {
+    function initialize(MiniMeToken _token, uint64 _supportRequiredPct, uint64 _minAcceptQuorumPct, uint64 _voteTime, uint64 _objectionTime)
+        external
+        onlyInit
+    {
         initialized();
 
         require(_minAcceptQuorumPct <= _supportRequiredPct, ERROR_INIT_PCTS);
@@ -88,6 +94,7 @@ contract Voting is IForwarder, AragonApp {
         supportRequiredPct = _supportRequiredPct;
         minAcceptQuorumPct = _minAcceptQuorumPct;
         voteTime = _voteTime;
+        objectionTime = _objectionTime;
     }
 
     /**
@@ -133,6 +140,19 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
+    * @notice Change objection time to `_objectionTime` sec. The change affects all existing unexecuted votes, so be really careful with it
+    * @param _appealTime New objection time
+    */
+    function unsafelyChangeObjectionTime(uint64 _objectionTime)
+        external
+        authP(UNSAFELY_MODIFY_VOTE_TIME_ROLE, arr(uint256(_objectionTime), uint256(objectionTime)))
+    {
+        lockTime = _objectionTime;
+
+        emit ChangeLockTime(_objectionTime);
+    }
+
+    /**
     * @notice Create a new vote about "`_metadata`"
     * @param _executionScript EVM script to be executed on approval
     * @param _metadata Vote metadata
@@ -159,7 +179,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @notice Vote `_supports ? 'yes' : 'no'` in vote #`_voteId`
+    * @notice Vote `_supports ? 'yes' : 'no'` in vote #`_voteId`. During objection period one can only vote 'no'
     * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
     *      created via `newVote(),` which requires initialization
     * @param _voteId Id for vote
@@ -167,7 +187,7 @@ contract Voting is IForwarder, AragonApp {
     * @param _executesIfDecided Whether the vote should execute its action if it becomes decided
     */
     function vote(uint256 _voteId, bool _supports, bool _executesIfDecided) external voteExists(_voteId) {
-        require(_canVote(_voteId, msg.sender), ERROR_CAN_NOT_VOTE);
+        require(_canVote(_voteId, msg.sender) || (_canObject(_voteId, msg.sender) && !_supports), ERROR_CAN_NOT_VOTE);
         _vote(_voteId, _supports, msg.sender, _executesIfDecided);
     }
 
@@ -233,6 +253,16 @@ contract Voting is IForwarder, AragonApp {
     */
     function canVote(uint256 _voteId, address _voter) public view voteExists(_voteId) returns (bool) {
         return _canVote(_voteId, _voter);
+    }
+
+    /**
+    * @notice Tells whether `_sender` can object to a vote #`_voteId` decision or not
+    * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
+    *      created via `newVote(),` which requires initialization
+    * @return True if the given voter can participate a certain vote, false otherwise
+    */
+    function canObject(uint256 _voteId, address _voter) public view voteExists(_voteId) returns (bool) {
+        return _canObject(_voteId, _voter);
     }
 
     /**
@@ -318,7 +348,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @dev Internal function to cast a vote. It assumes the queried vote exists.
+    * @dev Internal function to cast a vote. It assumes the queried vote exists, not executed.
     */
     function _vote(uint256 _voteId, bool _supports, address _voter, bool _executesIfDecided) internal {
         Vote storage vote_ = votes[_voteId];
@@ -389,7 +419,7 @@ contract Voting is IForwarder, AragonApp {
         }
 
         // Vote ended?
-        if (_isVoteOpen(vote_)) {
+        if (_isVoteOpen(vote_) || _isVoteOpenForObjection(vote_)) {
             return false;
         }
         // Has enough support?
@@ -415,11 +445,28 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
+    * @dev Internal function to check if a voter can at least object to a vote decision. It assumes the queried vote exists.
+    * @return True if the given voter can object to a certain vote decision execution, false otherwise
+    */
+    function _canObject(uint256 _voteId, address _voter) internal view returns (bool) {
+        Vote storage vote_ = votes[_voteId];
+        return _isVoteOpenForObjection(vote_) && token.balanceOfAt(_voter, vote_.snapshotBlock) > 0;
+    }
+
+    /**
     * @dev Internal function to check if a vote is still open
     * @return True if the given vote is open, false otherwise
     */
     function _isVoteOpen(Vote storage vote_) internal view returns (bool) {
         return getTimestamp64() < vote_.startDate.add(voteTime) && !vote_.executed;
+    }
+
+    /**
+    * @dev Internal function to check if a vote is still possible to object
+    * @return True if the given vote is open for objection, false otherwise
+    */
+    function _isVoteOpenForObjection(Vote storage vote_) internal view returns (bool) {
+        return getTimestamp64() < vote_.startDate.add(voteTime).add(objectionTime) && !vote_.executed;
     }
 
     /**
