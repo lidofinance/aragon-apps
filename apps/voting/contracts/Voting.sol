@@ -141,7 +141,7 @@ contract Voting is IForwarder, AragonApp {
 
     /**
     * @notice Change objection time to `_objectionTime` sec. The change affects all existing unexecuted votes, so be really careful with it
-    * @param _appealTime New objection time
+    * @param _objectionTime New objection time
     */
     function unsafelyChangeObjectionTime(uint64 _objectionTime)
         external
