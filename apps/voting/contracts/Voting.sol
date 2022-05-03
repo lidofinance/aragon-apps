@@ -147,9 +147,9 @@ contract Voting is IForwarder, AragonApp {
         external
         authP(UNSAFELY_MODIFY_VOTE_TIME_ROLE, arr(uint256(_objectionTime), uint256(objectionTime)))
     {
-        lockTime = _objectionTime;
+        objectionTime = _objectionTime;
 
-        emit ChangeLockTime(_objectionTime);
+        emit ChangeObjectionTime(_objectionTime);
     }
 
     /**
