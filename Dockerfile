@@ -13,7 +13,7 @@ FROM node:14-alpine as base
 
 WORKDIR /app
 COPY --from=build /app /app
-RUN apk add --no-cache curl=7.80.0-r0 rsync=3.2.3-r5 && chown -R node /app/apps/voting/app
+RUN apk add --no-cache curl=7.83.0-r0 rsync=3.2.3-r5 && chown -R node /app/apps/voting/app
 
 USER node
 EXPOSE 3001
