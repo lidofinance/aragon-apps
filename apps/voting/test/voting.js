@@ -18,7 +18,7 @@ const VOTER_STATE = ['ABSENT', 'YEA', 'NAY'].reduce((state, key, index) => {
 
 contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, nonHolder]) => {
   let votingBase, voting, token, executionTarget
-  let CREATE_VOTES_ROLE, MODIFY_SUPPORT_ROLE, MODIFY_QUORUM_ROLE
+  let CREATE_VOTES_ROLE, MODIFY_SUPPORT_ROLE, MODIFY_QUORUM_ROLE, UNSAFELY_MODIFY_VOTE_TIME_ROLE
 
   const NOW = 1
   const generalPhase = 700
