@@ -21,8 +21,10 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
   let CREATE_VOTES_ROLE, MODIFY_SUPPORT_ROLE, MODIFY_QUORUM_ROLE
 
   const NOW = 1
-  const votingDuration = 900
-  const objectionDuration = 100
+  const generalPhase = 700
+  const objectionPhase = 300
+  const votingDuration = generalPhase + objectionPhase
+
   const APP_ID = '0x1234123412341234123412341234123412341234123412341234123412341234'
 
   before('load roles', async () => {
@@ -49,20 +51,20 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
 
     beforeEach(async () => {
       token = await MiniMeToken.new(ZERO_ADDRESS, ZERO_ADDRESS, 0, 'n', 0, 'n', true) // empty parameters minime
-      await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, votingDuration, objectionDuration)
+      await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, generalPhase, objectionPhase)
       executionTarget = await ExecutionTarget.new()
     })
 
     it('fails on reinitialization', async () => {
-      await assertRevert(voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, votingDuration,
-          objectionDuration), ERRORS.INIT_ALREADY_INITIALIZED)
+      await assertRevert(voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, generalPhase,
+          objectionPhase), ERRORS.INIT_ALREADY_INITIALIZED)
     })
 
     it('cannot initialize base app', async () => {
       const newVoting = await Voting.new()
       assert.isTrue(await newVoting.isPetrified())
-      await assertRevert(newVoting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, votingDuration,
-          objectionDuration), ERRORS.INIT_ALREADY_INITIALIZED)
+      await assertRevert(newVoting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, generalPhase,
+          objectionPhase), ERRORS.INIT_ALREADY_INITIALIZED)
     })
 
     it('checks it is forwarder', async () => {
@@ -110,7 +112,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
         await token.generateTokens(holder29, bigExp(29, decimals))
         await token.generateTokens(holder51, bigExp(51, decimals))
 
-        await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, votingDuration, objectionDuration)
+        await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, generalPhase, objectionPhase)
 
         executionTarget = await ExecutionTarget.new()
       })
@@ -310,16 +312,16 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
     it('fails if min acceptance quorum is greater than min support', async () => {
       const neededSupport = pct16(20)
       const minimumAcceptanceQuorum = pct16(50)
-      await assertRevert(voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, votingDuration,
-          objectionDuration), ERRORS.VOTING_INIT_PCTS)
+      await assertRevert(voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, generalPhase,
+          objectionPhase), ERRORS.VOTING_INIT_PCTS)
     })
 
     it('fails if min support is 100% or more', async () => {
       const minimumAcceptanceQuorum = pct16(20)
-      await assertRevert(voting.initialize(token.address, pct16(101), minimumAcceptanceQuorum, votingDuration,
-          objectionDuration), ERRORS.VOTING_INIT_SUPPORT_TOO_BIG)
-      await assertRevert(voting.initialize(token.address, pct16(100), minimumAcceptanceQuorum, votingDuration,
-          objectionDuration), ERRORS.VOTING_INIT_SUPPORT_TOO_BIG)
+      await assertRevert(voting.initialize(token.address, pct16(101), minimumAcceptanceQuorum, generalPhase,
+          objectionPhase), ERRORS.VOTING_INIT_SUPPORT_TOO_BIG)
+      await assertRevert(voting.initialize(token.address, pct16(100), minimumAcceptanceQuorum, generalPhase,
+          objectionPhase), ERRORS.VOTING_INIT_SUPPORT_TOO_BIG)
     })
   })
 
@@ -330,7 +332,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
     beforeEach(async() => {
       token = await MiniMeToken.new(ZERO_ADDRESS, ZERO_ADDRESS, 0, 'n', 0, 'n', true) // empty parameters minime
 
-      await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, votingDuration, objectionDuration)
+      await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, generalPhase, objectionPhase)
     })
 
     it('fails creating a vote if token has no holder', async () => {
@@ -347,7 +349,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
 
       await token.generateTokens(holder1, 1)
 
-      await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, votingDuration, objectionDuration)
+      await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, generalPhase, objectionPhase)
     })
 
     it('new vote cannot be executed before voting', async () => {
@@ -393,7 +395,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
       await token.generateTokens(holder1, 1)
       await token.generateTokens(holder2, 2)
 
-      await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, votingDuration, objectionDuration)
+      await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, generalPhase, objectionPhase)
     })
 
     it('new vote cannot be executed before holder2 voting', async () => {
@@ -428,7 +430,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
       await token.generateTokens(holder1, 1)
       await token.generateTokens(holder2, 1)
 
-      await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, votingDuration, objectionDuration)
+      await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, generalPhase, objectionPhase)
     })
 
     it('uses the correct snapshot value if tokens are minted afterwards', async () => {
@@ -510,7 +512,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
       await token.generateTokens(holder20, bigExp(20, 18))
       await token.generateTokens(holder29, bigExp(29, 18))
       await token.generateTokens(holder51, bigExp(51, 18))
-      await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, votingDuration, objectionDuration)
+      await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, generalPhase, objectionPhase)
       executionTarget = await ExecutionTarget.new()
     })
 
