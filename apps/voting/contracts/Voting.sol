@@ -164,10 +164,11 @@ contract Voting is IForwarder, AragonApp {
 
     /**
     * @notice Create a new vote about "`_metadata`"
+    * @dev  _executesIfDecided was deprecated to introduce a proper lock period between decision and execution.
     * @param _executionScript EVM script to be executed on approval
     * @param _metadata Vote metadata
     * @param _castVote Whether to also cast newly created vote
-    * @param _executesIfDecided Whether to also immediately execute newly created vote if decided
+    * @param _executesIfDecided Whether to also immediately execute newly created vote if decided. __NB!__ Deprecated
     * @return voteId id for newly created vote
     */
     function newVote(bytes _executionScript, string _metadata, bool _castVote, bool _executesIfDecided)
@@ -182,9 +183,10 @@ contract Voting is IForwarder, AragonApp {
     * @notice Vote `_supports ? 'yes' : 'no'` in vote #`_voteId`. During objection period one can only vote 'no'
     * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
     *      created via `newVote(),` which requires initialization
+    * @dev  _executesIfDecided was deprecated to introduce a proper lock period between decision and execution.
     * @param _voteId Id for vote
     * @param _supports Whether voter supports the vote
-    * @param _executesIfDecided Whether the vote should execute its action if it becomes decided
+    * @param _executesIfDecided Whether the vote should execute its action if it becomes decided __NB!__ Deprecated
     */
     function vote(uint256 _voteId, bool _supports, bool _executesIfDecided) external voteExists(_voteId) {
         require(_canVote(_voteId, msg.sender) || (_canObject(_voteId, msg.sender) && !_supports), ERROR_CAN_NOT_VOTE);
@@ -323,6 +325,7 @@ contract Voting is IForwarder, AragonApp {
 
     /**
     * @dev Internal function to create a new vote
+    * @dev  _executesIfDecided was deprecated to introduce a proper lock period between decision and execution.
     * @return voteId id for newly created vote
     */
     function _newVote(bytes _executionScript, string _metadata, bool _castVote, bool _executesIfDecided) internal returns (uint256 voteId) {
@@ -349,6 +352,7 @@ contract Voting is IForwarder, AragonApp {
 
     /**
     * @dev Internal function to cast a vote. It assumes the queried vote exists, not executed.
+    * @dev  _executesIfDecided was deprecated to introduce a proper lock period between decision and execution.
     */
     function _vote(uint256 _voteId, bool _supports, address _voter, bool _executesIfDecided) internal {
         Vote storage vote_ = votes[_voteId];
@@ -411,11 +415,6 @@ contract Voting is IForwarder, AragonApp {
 
         if (vote_.executed) {
             return false;
-        }
-
-        // Voting is already decided
-        if (_isValuePct(vote_.yea, vote_.votingPower, vote_.supportRequiredPct)) {
-            return true;
         }
 
         // Vote ended?
