@@ -415,9 +415,15 @@ contract Voting is IForwarder, AragonApp {
         }
 
         // Vote ended?
-        if (_isVoteOpen(vote_) || _isVoteOpenForObjection(vote_)) {
+        if (_isVoteOpen(vote_)) {
             return false;
         }
+
+        // Objection time ended?
+        if (_isVoteOpenForObjection(vote_)) {
+            return false;
+        }
+
         // Has enough support?
         uint256 totalVotes = vote_.yea.add(vote_.nay);
         if (!_isValuePct(vote_.yea, totalVotes, vote_.supportRequiredPct)) {
