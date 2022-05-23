@@ -295,7 +295,8 @@ contract Voting is IForwarder, AragonApp {
             uint256 yea,
             uint256 nay,
             uint256 votingPower,
-            bytes script
+            bytes script,
+            bool openForObjection
         )
     {
         Vote storage vote_ = votes[_voteId];
@@ -310,6 +311,7 @@ contract Voting is IForwarder, AragonApp {
         nay = vote_.nay;
         votingPower = vote_.votingPower;
         script = vote_.executionScript;
+        openForObjection = _isVoteOpenForObjection(vote_);
     }
 
     /**
