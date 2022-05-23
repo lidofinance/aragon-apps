@@ -379,11 +379,6 @@ contract Voting is IForwarder, AragonApp {
         vote_.voters[_voter] = _supports ? VoterState.Yea : VoterState.Nay;
 
         emit CastVote(_voteId, _voter, _supports, voterStake);
-
-        if (_executesIfDecided && _canExecute(_voteId)) {
-            // We've already checked if the vote can be executed with `_canExecute()`
-            _unsafeExecuteVote(_voteId);
-        }
     }
 
     /**
