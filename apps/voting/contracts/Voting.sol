@@ -248,7 +248,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @notice Tells whether `_sender` can participate in the vote #`_voteId` or not
+    * @notice Tells whether `_sender` can vote in the vote #`_voteId` by voting 'yes' or 'no'
     * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
     *      created via `newVote(),` which requires initialization
     * @return True if the given voter can participate a certain vote, false otherwise
@@ -258,7 +258,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @notice Tells whether `_sender` can object to a vote #`_voteId` decision or not
+    * @notice Tells whether `_sender` can object to a vote #`_voteId` by voting 'no'
     * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
     *      created via `newVote(),` which requires initialization
     * @return True if the given voter can participate a certain vote, false otherwise
@@ -456,7 +456,7 @@ contract Voting is IForwarder, AragonApp {
 
     /**
     * @dev Internal function to check if a vote is still open
-    * @return True if the given vote is open, false otherwise
+    * @return True if it passed less than `voteTime` since vote start date
     */
     function _isVoteOpen(Vote storage vote_) internal view returns (bool) {
         return getTimestamp64() < vote_.startDate.add(voteTime) && !vote_.executed;
@@ -464,7 +464,7 @@ contract Voting is IForwarder, AragonApp {
 
     /**
     * @dev Internal function to check if a vote is still possible to object
-    * @return True if the given vote is open for objection, false otherwise
+    * @return True if it passed less than `voteTime + objectionTime` since vote start date
     */
     function _isVoteOpenForObjection(Vote storage vote_) internal view returns (bool) {
         return getTimestamp64() < vote_.startDate.add(voteTime).add(objectionTime) && !vote_.executed;
