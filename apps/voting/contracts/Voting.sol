@@ -132,7 +132,7 @@ contract Voting is IForwarder, AragonApp {
     */
     function unsafelyChangeVoteTime(uint64 _voteTime)
         external
-        authP(UNSAFELY_MODIFY_VOTE_TIME_ROLE, arr(uint256(_voteTime), uint256(voteTime)))
+        auth(UNSAFELY_MODIFY_VOTE_TIME_ROLE)
     {
         voteTime = _voteTime;
 
@@ -145,7 +145,7 @@ contract Voting is IForwarder, AragonApp {
     */
     function unsafelyChangeObjectionTime(uint64 _objectionTime)
         external
-        authP(UNSAFELY_MODIFY_VOTE_TIME_ROLE, arr(uint256(_objectionTime), uint256(objectionTime)))
+        auth(UNSAFELY_MODIFY_VOTE_TIME_ROLE)
     {
         objectionTime = _objectionTime;
 
