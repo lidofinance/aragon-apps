@@ -13,7 +13,7 @@ contract VotingMock is Voting, TimeHelpersMock {
         external
         returns (uint256 voteId)
     {
-        voteId = _newVote(_executionScript, _metadata, _castVote, _executesIfDecided);
+        voteId = _newVote(_executionScript, _metadata, _castVote);
         emit StartVote(voteId, msg.sender, _metadata);
     }
 
@@ -30,7 +30,7 @@ contract VotingMock is Voting, TimeHelpersMock {
         token.generateTokens(_holder, _tokenAmount);
 
         bytes memory noScript = new bytes(0);
-        voteId = _newVote(noScript, _metadata, false, false);
+        voteId = _newVote(noScript, _metadata, false);
         emit StartVote(voteId, msg.sender, _metadata);
     }
 }

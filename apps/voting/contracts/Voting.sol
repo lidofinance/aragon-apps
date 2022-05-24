@@ -159,7 +159,7 @@ contract Voting is IForwarder, AragonApp {
     * @return voteId Id for newly created vote
     */
     function newVote(bytes _executionScript, string _metadata) external auth(CREATE_VOTES_ROLE) returns (uint256 voteId) {
-        return _newVote(_executionScript, _metadata, true, true);
+        return _newVote(_executionScript, _metadata, true);
     }
 
     /**
@@ -168,7 +168,7 @@ contract Voting is IForwarder, AragonApp {
     * @param _executionScript EVM script to be executed on approval
     * @param _metadata Vote metadata
     * @param _castVote Whether to also cast newly created vote
-    * @param _executesIfDecided(deprecated) Whether to also immediately execute newly created vote if decided
+    * @param _executesIfDecided_deprecated Whether to also immediately execute newly created vote if decided
     * @return voteId id for newly created vote
     */
     function newVote(bytes _executionScript, string _metadata, bool _castVote, bool _executesIfDecided_deprecated)
@@ -186,7 +186,7 @@ contract Voting is IForwarder, AragonApp {
     * @dev  _executesIfDecided was deprecated to introduce a proper lock period between decision and execution.
     * @param _voteId Id for vote
     * @param _supports Whether voter supports the vote
-    * @param _executesIfDecided(deprecated) Whether the vote should execute its action if it becomes decided
+    * @param _executesIfDecided_deprecated Whether the vote should execute its action if it becomes decided
     */
     function vote(uint256 _voteId, bool _supports, bool _executesIfDecided_deprecated) external voteExists(_voteId) {
         require(_canVote(_voteId, msg.sender) || (!_supports && _canObject(_voteId, msg.sender)), ERROR_CAN_NOT_VOTE);
@@ -221,7 +221,7 @@ contract Voting is IForwarder, AragonApp {
     */
     function forward(bytes _evmScript) public {
         require(canForward(msg.sender, _evmScript), ERROR_CAN_NOT_FORWARD);
-        _newVote(_evmScript, "", true, true);
+        _newVote(_evmScript, "", true);
     }
 
     /**
