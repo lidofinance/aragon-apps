@@ -168,15 +168,15 @@ contract Voting is IForwarder, AragonApp {
     * @param _executionScript EVM script to be executed on approval
     * @param _metadata Vote metadata
     * @param _castVote Whether to also cast newly created vote
-    * @param _executesIfDecided Whether to also immediately execute newly created vote if decided. __NB!__ Deprecated
+    * @param _executesIfDecided(deprecated) Whether to also immediately execute newly created vote if decided
     * @return voteId id for newly created vote
     */
-    function newVote(bytes _executionScript, string _metadata, bool _castVote, bool _executesIfDecided)
+    function newVote(bytes _executionScript, string _metadata, bool _castVote, bool _executesIfDecided_deprecated)
         external
         auth(CREATE_VOTES_ROLE)
         returns (uint256 voteId)
     {
-        return _newVote(_executionScript, _metadata, _castVote, _executesIfDecided);
+        return _newVote(_executionScript, _metadata, _castVote);
     }
 
     /**
@@ -186,11 +186,11 @@ contract Voting is IForwarder, AragonApp {
     * @dev  _executesIfDecided was deprecated to introduce a proper lock period between decision and execution.
     * @param _voteId Id for vote
     * @param _supports Whether voter supports the vote
-    * @param _executesIfDecided Whether the vote should execute its action if it becomes decided __NB!__ Deprecated
+    * @param _executesIfDecided(deprecated) Whether the vote should execute its action if it becomes decided
     */
-    function vote(uint256 _voteId, bool _supports, bool _executesIfDecided) external voteExists(_voteId) {
+    function vote(uint256 _voteId, bool _supports, bool _executesIfDecided_deprecated) external voteExists(_voteId) {
         require(_canVote(_voteId, msg.sender) || (!_supports && _canObject(_voteId, msg.sender)), ERROR_CAN_NOT_VOTE);
-        _vote(_voteId, _supports, msg.sender, _executesIfDecided);
+        _vote(_voteId, _supports, msg.sender);
     }
 
     /**
@@ -327,10 +327,9 @@ contract Voting is IForwarder, AragonApp {
 
     /**
     * @dev Internal function to create a new vote
-    * @dev  _executesIfDecided was deprecated to introduce a proper lock period between decision and execution.
     * @return voteId id for newly created vote
     */
-    function _newVote(bytes _executionScript, string _metadata, bool _castVote, bool _executesIfDecided) internal returns (uint256 voteId) {
+    function _newVote(bytes _executionScript, string _metadata, bool _castVote) internal returns (uint256 voteId) {
         uint64 snapshotBlock = getBlockNumber64() - 1; // avoid double voting in this very block
         uint256 votingPower = token.totalSupplyAt(snapshotBlock);
         require(votingPower > 0, ERROR_NO_VOTING_POWER);
@@ -348,7 +347,7 @@ contract Voting is IForwarder, AragonApp {
         emit StartVote(voteId, msg.sender, _metadata);
 
         if (_castVote && _canVote(voteId, msg.sender)) {
-            _vote(voteId, true, msg.sender, _executesIfDecided);
+            _vote(voteId, true, msg.sender);
         }
     }
 
@@ -356,7 +355,7 @@ contract Voting is IForwarder, AragonApp {
     * @dev Internal function to cast a vote. It assumes the queried vote exists, not executed.
     * @dev  _executesIfDecided was deprecated to introduce a proper lock period between decision and execution.
     */
-    function _vote(uint256 _voteId, bool _supports, address _voter, bool _executesIfDecided) internal {
+    function _vote(uint256 _voteId, bool _supports, address _voter) internal {
         Vote storage vote_ = votes[_voteId];
 
         // This could re-enter, though we can assume the governance token is not malicious
