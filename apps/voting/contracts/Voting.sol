@@ -189,7 +189,7 @@ contract Voting is IForwarder, AragonApp {
     * @param _executesIfDecided Whether the vote should execute its action if it becomes decided __NB!__ Deprecated
     */
     function vote(uint256 _voteId, bool _supports, bool _executesIfDecided) external voteExists(_voteId) {
-        require(_canVote(_voteId, msg.sender) || (_canObject(_voteId, msg.sender) && !_supports), ERROR_CAN_NOT_VOTE);
+        require(_canVote(_voteId, msg.sender) || (!_supports && _canObject(_voteId, msg.sender)), ERROR_CAN_NOT_VOTE);
         _vote(_voteId, _supports, msg.sender, _executesIfDecided);
     }
 
