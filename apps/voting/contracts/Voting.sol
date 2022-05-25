@@ -62,6 +62,7 @@ contract Voting is IForwarder, AragonApp {
 
     event StartVote(uint256 indexed voteId, address indexed creator, string metadata);
     event CastVote(uint256 indexed voteId, address indexed voter, bool supports, uint256 stake);
+    event CastObjection(uint256 indexed voteId, address indexed voter, uint256 stake);
     event ExecuteVote(uint256 indexed voteId);
     event ChangeSupportRequired(uint64 supportRequiredPct);
     event ChangeMinQuorum(uint64 minAcceptQuorumPct);
@@ -353,8 +354,8 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @dev Internal function to cast a vote. It assumes the queried vote exists, not executed.
-    * @dev  _executesIfDecided was deprecated to introduce a proper lock period between decision and execution.
+    * @dev Internal function to cast a vote or object to.
+      @dev It assumes that voter can support or object to the vote
     */
     function _vote(uint256 _voteId, bool _supports, address _voter) internal {
         Vote storage vote_ = votes[_voteId];
@@ -379,6 +380,10 @@ contract Voting is IForwarder, AragonApp {
         vote_.voters[_voter] = _supports ? VoterState.Yea : VoterState.Nay;
 
         emit CastVote(_voteId, _voter, _supports, voterStake);
+
+        if (!canVote(_voteId, _voter)) { // objection phase
+            emit CastObjection(_voteId, _voter, voterStake);
+        }
     }
 
     /**
