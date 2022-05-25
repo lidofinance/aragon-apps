@@ -381,7 +381,7 @@ contract Voting is IForwarder, AragonApp {
 
         emit CastVote(_voteId, _voter, _supports, voterStake);
 
-        if (!canVote(_voteId, _voter)) { // objection phase
+        if (!_isVoteOpen(vote_)) { // objection phase
             emit CastObjection(_voteId, _voter, voterStake);
         }
     }
