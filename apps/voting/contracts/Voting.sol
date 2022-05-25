@@ -78,8 +78,8 @@ contract Voting is IForwarder, AragonApp {
     * @param _token MiniMeToken Address that will be used as governance token
     * @param _supportRequiredPct Percentage of yeas in casted votes for a vote to succeed (expressed as a percentage of 10^18; eg. 10^16 = 1%, 10^18 = 100%)
     * @param _minAcceptQuorumPct Percentage of yeas in total possible votes for a vote to succeed (expressed as a percentage of 10^18; eg. 10^16 = 1%, 10^18 = 100%)
-    * @param _voteTime Seconds that a vote will be open for token holders to vote (unless enough yeas or nays have been cast to make an early decision)
-    * @param _objectionTime Seconds that a vote will be open for token holders to object to the decision
+    * @param _voteTime The duration of the main vote phase, i.e. seconds that a vote will be open for token holders to both support and object to the outcome
+    * @param _objectionTime The duration of the objection vote phase, i.e. seconds that a vote will be open after the main vote phase ends for token holders to object to the outcome
     */
     function initialize(MiniMeToken _token, uint64 _supportRequiredPct, uint64 _minAcceptQuorumPct, uint64 _voteTime, uint64 _objectionTime)
         external
@@ -140,7 +140,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @notice Change objection time to `_objectionTime` sec. The change affects all existing unexecuted votes, so be really careful with it
+    * @notice Change the objection phase duration to _objectionTime sec. The change affects all existing unexecuted votes, so be really careful with it
     * @param _objectionTime New objection time
     */
     function unsafelyChangeObjectionTime(uint64 _objectionTime)
@@ -180,7 +180,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @notice Vote `_supports ? 'yes' : 'no'` in vote #`_voteId`. During objection period one can only vote 'no'
+    * @notice Vote `_supports ? 'yes' : 'no'` in vote #`_voteId`. During objection phase one can only vote 'no'
     * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
     *      created via `newVote(),` which requires initialization
     * @dev  _executesIfDecided was deprecated to introduce a proper lock period between decision and execution.
@@ -248,20 +248,20 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @notice Tells whether `_sender` can vote in the vote #`_voteId` by voting 'yes' or 'no'
+    * @notice Tells whether _sender can participate in the main phase of the vote #_voteId
     * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
     *      created via `newVote(),` which requires initialization
-    * @return True if the given voter can participate a certain vote, false otherwise
+    * @return True if the given voter can participate in the main phase of a certain vote, false otherwise
     */
     function canVote(uint256 _voteId, address _voter) public view voteExists(_voteId) returns (bool) {
         return _canVote(_voteId, _voter);
     }
 
     /**
-    * @notice Tells whether `_sender` can object to a vote #`_voteId` by voting 'no'
+    * @notice Tells whether _sender can participate in the objection phase of the vote #_voteId
     * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
     *      created via `newVote(),` which requires initialization
-    * @return True if the given voter can participate a certain vote, false otherwise
+    * @return True if the given voter can participate in the objection phase of a certain vote, false otherwise
     */
     function canObject(uint256 _voteId, address _voter) public view voteExists(_voteId) returns (bool) {
         return _canObject(_voteId, _voter);
@@ -270,7 +270,7 @@ contract Voting is IForwarder, AragonApp {
     /**
     * @dev Return all information for a vote by its ID
     * @param _voteId Vote identifier
-    * @return Vote open status
+    * @return true if the vote open for both support and objection
     * @return Vote executed status
     * @return Vote start date
     * @return Vote snapshot block
@@ -280,6 +280,7 @@ contract Voting is IForwarder, AragonApp {
     * @return Vote nays amount
     * @return Vote power
     * @return Vote script
+    * @return true if the vote open for objection
     */
     function getVote(uint256 _voteId)
         public
@@ -446,8 +447,8 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @dev Internal function to check if a voter can at least object to a vote decision. It assumes the queried vote exists.
-    * @return True if the given voter can object to a certain vote decision execution, false otherwise
+    * @dev Internal function to check if a voter can at least object to a vote outcome. It assumes the queried vote exists.
+    * @return True if the given voter can object to a certain vote outcome, false otherwise
     */
     function _canObject(uint256 _voteId, address _voter) internal view returns (bool) {
         Vote storage vote_ = votes[_voteId];
@@ -456,7 +457,7 @@ contract Voting is IForwarder, AragonApp {
 
     /**
     * @dev Internal function to check if a vote is still open
-    * @return True if it passed less than `voteTime` since vote start date
+    * @return True if less than voteTime has passed since the vote start
     */
     function _isVoteOpen(Vote storage vote_) internal view returns (bool) {
         return getTimestamp64() < vote_.startDate.add(voteTime) && !vote_.executed;
@@ -464,7 +465,7 @@ contract Voting is IForwarder, AragonApp {
 
     /**
     * @dev Internal function to check if a vote is still possible to object
-    * @return True if it passed less than `voteTime + objectionTime` since vote start date
+    * @return True if less than voteTime + objectionTime has passed since the vote start
     */
     function _isVoteOpenForObjection(Vote storage vote_) internal view returns (bool) {
         return getTimestamp64() < vote_.startDate.add(voteTime).add(objectionTime) && !vote_.executed;
