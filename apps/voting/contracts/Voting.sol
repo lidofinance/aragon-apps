@@ -141,7 +141,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @notice Change the objection phase duration to _objectionTime sec. The change affects all existing unexecuted votes, so be really careful with it
+    * @notice Change the objection phase duration to `_objectionTime` sec. The change affects all existing unexecuted votes, so be really careful with it
     * @param _objectionTime New objection time
     */
     function unsafelyChangeObjectionTime(uint64 _objectionTime)
@@ -249,7 +249,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @notice Tells whether _sender can participate in the main phase of the vote #_voteId
+    * @notice Tells whether `_sender` can participate in the main phase of the vote #`_voteId`
     * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
     *      created via `newVote(),` which requires initialization
     * @return True if the given voter can participate in the main phase of a certain vote, false otherwise
@@ -259,7 +259,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @notice Tells whether _sender can participate in the objection phase of the vote #_voteId
+    * @notice Tells whether `_sender` can participate in the objection phase of the vote #`_voteId`
     * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
     *      created via `newVote(),` which requires initialization
     * @return True if the given voter can participate in the objection phase of a certain vote, false otherwise
