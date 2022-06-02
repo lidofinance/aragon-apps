@@ -254,7 +254,7 @@ contract Voting is IForwarder, AragonApp {
     *      created via `newVote(),` which requires initialization
     * @return True if the given voter can participate in the main phase of a certain vote, false otherwise
     */
-    function canVote(uint256 _voteId, address _voter) public view voteExists(_voteId) returns (bool) {
+    function canVote(uint256 _voteId, address _voter) external view voteExists(_voteId) returns (bool) {
         return _canVote(_voteId, _voter);
     }
 
@@ -264,7 +264,7 @@ contract Voting is IForwarder, AragonApp {
     *      created via `newVote(),` which requires initialization
     * @return True if the given voter can participate in the objection phase of a certain vote, false otherwise
     */
-    function canObject(uint256 _voteId, address _voter) public view voteExists(_voteId) returns (bool) {
+    function canObject(uint256 _voteId, address _voter) external view voteExists(_voteId) returns (bool) {
         return _canObject(_voteId, _voter);
     }
 
