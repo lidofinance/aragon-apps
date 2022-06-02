@@ -430,12 +430,13 @@ contract Voting is IForwarder, AragonApp {
         }
 
         // Has enough support?
-        uint256 totalVotes = vote_.yea.add(vote_.nay);
-        if (!_isValuePct(vote_.yea, totalVotes, vote_.supportRequiredPct)) {
+        uint256 voteYea = vote_.yea;
+        uint256 totalVotes = voteYea.add(vote_.nay);
+        if (!_isValuePct(voteYea, totalVotes, vote_.supportRequiredPct)) {
             return false;
         }
         // Has min quorum?
-        if (!_isValuePct(vote_.yea, vote_.votingPower, vote_.minAcceptQuorumPct)) {
+        if (!_isValuePct(voteYea, vote_.votingPower, vote_.minAcceptQuorumPct)) {
             return false;
         }
 
