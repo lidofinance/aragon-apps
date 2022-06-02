@@ -373,11 +373,11 @@ contract Voting is IForwarder, AragonApp {
 
         if (_supports) {
             vote_.yea = vote_.yea.add(voterStake);
+            vote_.voters[_voter] = VoterState.Yea;
         } else {
             vote_.nay = vote_.nay.add(voterStake);
+            vote_.voters[_voter] = VoterState.Nay;
         }
-
-        vote_.voters[_voter] = _supports ? VoterState.Yea : VoterState.Nay;
 
         emit CastVote(_voteId, _voter, _supports, voterStake);
 
