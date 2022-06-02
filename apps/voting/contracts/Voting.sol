@@ -242,6 +242,7 @@ contract Voting is IForwarder, AragonApp {
     * @notice Tells whether a vote #`_voteId` can be executed or not
     * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
     *      created via `newVote(),` which requires initialization
+    * @param _voteId Vote identifier
     * @return True if the given vote can be executed, false otherwise
     */
     function canExecute(uint256 _voteId) public view voteExists(_voteId) returns (bool) {
@@ -249,9 +250,11 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @notice Tells whether `_sender` can participate in the main phase of the vote #`_voteId`
+    * @notice Tells whether `_voter` can participate in the main phase of the vote #`_voteId`
     * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
     *      created via `newVote(),` which requires initialization
+    * @param _voteId Vote identifier
+    * @param _voter address of the voter to check
     * @return True if the given voter can participate in the main phase of a certain vote, false otherwise
     */
     function canVote(uint256 _voteId, address _voter) external view voteExists(_voteId) returns (bool) {
@@ -262,6 +265,8 @@ contract Voting is IForwarder, AragonApp {
     * @notice Tells whether `_sender` can participate in the objection phase of the vote #`_voteId`
     * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
     *      created via `newVote(),` which requires initialization
+    * @param _voteId Vote identifier
+    * @param _voter address of the voter to check
     * @return True if the given voter can participate in the objection phase of a certain vote, false otherwise
     */
     function canObject(uint256 _voteId, address _voter) external view voteExists(_voteId) returns (bool) {
@@ -319,6 +324,7 @@ contract Voting is IForwarder, AragonApp {
     /**
     * @dev Return the state of a voter for a given vote by its ID
     * @param _voteId Vote identifier
+    * @param _voter address of the voter
     * @return VoterState of the requested voter for a certain vote
     */
     function getVoterState(uint256 _voteId, address _voter) public view voteExists(_voteId) returns (VoterState) {
@@ -424,7 +430,7 @@ contract Voting is IForwarder, AragonApp {
             return false;
         }
 
-        // Objection time ended?
+        // One can cast at least 'no' vote
         if (_isVoteOpenForObjection(vote_)) {
             return false;
         }
@@ -462,7 +468,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @dev Internal function to check if a vote is still open
+    * @dev Internal function to check if a vote is still open for both support and objection
     * @return True if less than voteTime has passed since the vote start
     */
     function _isVoteOpen(Vote storage vote_) internal view returns (bool) {
@@ -470,7 +476,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @dev Internal function to check if a vote is still possible to object
+    * @dev Internal function to check if a vote is still open for objection
     * @return True if less than voteTime + objectionTime has passed since the vote start
     */
     function _isVoteOpenForObjection(Vote storage vote_) internal view returns (bool) {
