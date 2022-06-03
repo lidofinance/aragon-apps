@@ -40,7 +40,7 @@ contract Voting is IForwarder, AragonApp {
 
     enum VoterState { Absent, Yea, Nay }
 
-    enum VotingPhase { Main, Objection }
+    enum VotePhase { Main, Objection, Closed }
 
     struct Vote {
         bool executed;
@@ -199,7 +199,7 @@ contract Voting is IForwarder, AragonApp {
     */
     function vote(uint256 _voteId, bool _supports, bool _executesIfDecided_deprecated) external voteExists(_voteId) {
         require(_canVote(_voteId, msg.sender), ERROR_CAN_NOT_VOTE);
-        require(!_supports || _getVotingPhase(votes[_voteId]) == VotingPhase.Main, ERROR_CAN_NOT_VOTE);
+        require(!_supports || _getVotePhase(votes[_voteId]) == VotePhase.Main, ERROR_CAN_NOT_VOTE);
         _vote(_voteId, _supports, msg.sender);
     }
 
@@ -275,10 +275,10 @@ contract Voting is IForwarder, AragonApp {
     * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
     *      created via `newVote(),` which requires initialization
     * @param _voteId Vote identifier
-    * @return VotingPhase.Main or VotingPhase.Objection
+    * @return VotePhase.Main if one can vote yes or no and VotePhase.Objection if one can vote only no and VotingPhase.Closed if no votes are accepted
     */
-    function getVotingPhase(uint256 _voteId) external view voteExists(_voteId) returns (VotingPhase) {
-        return _getVotingPhase(votes[_voteId]);
+    function getVotePhase(uint256 _voteId) external view voteExists(_voteId) returns (VotePhase) {
+        return _getVotePhase(votes[_voteId]);
     }
 
     /**
@@ -294,7 +294,7 @@ contract Voting is IForwarder, AragonApp {
     * @return Vote nays amount
     * @return Vote power
     * @return Vote script
-    * @return Vote phase. Can be VotingPhase.Main or VotingPhase.Objection
+    * @return Vote phase.
     */
     function getVote(uint256 _voteId)
         public
@@ -311,7 +311,7 @@ contract Voting is IForwarder, AragonApp {
             uint256 nay,
             uint256 votingPower,
             bytes script,
-            VotingPhase phase
+            VotePhase phase
         )
     {
         Vote storage vote_ = votes[_voteId];
@@ -326,7 +326,7 @@ contract Voting is IForwarder, AragonApp {
         nay = vote_.nay;
         votingPower = vote_.votingPower;
         script = vote_.executionScript;
-        phase = _getVotingPhase(vote_);
+        phase = _getVotePhase(vote_);
     }
 
     /**
@@ -395,7 +395,7 @@ contract Voting is IForwarder, AragonApp {
 
         emit CastVote(_voteId, _voter, _supports, voterStake);
 
-        if (_getVotingPhase(vote_) == VotingPhase.Objection) { // objection phase
+        if (_getVotePhase(vote_) == VotePhase.Objection) {
             emit CastObjection(_voteId, _voter, voterStake);
         }
     }
@@ -462,14 +462,19 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @dev Internal function to get the current phase for the vote. It assumes the queried vote exists.
-    * @return VotingPhase.Main if one can vote yes or no and VotingPhase.Objection if one can vote only no
+    * @dev Internal function to get the current phase of the vote. It assumes the queried vote exists.
+    * @return VotePhase.Main if one can vote 'yes' or 'no', VotePhase.Objection if one can vote only 'no' or VotePhase.Closed if no votes are accepted
     */
-    function _getVotingPhase(Vote storage vote_) internal view returns (VotingPhase) {
-        if (getTimestamp64() < vote_.startDate.add(voteTime).sub(objectionTime)) {
-            return VotingPhase.Main;
+    function _getVotePhase(Vote storage vote_) internal view returns (VotePhase) {
+        uint64 timestamp = getTimestamp64();
+        uint64 voteTimeEnd = vote_.startDate.add(voteTime);
+        if (timestamp < voteTimeEnd.sub(objectionTime)) {
+            return VotePhase.Main;
         }
-        return VotingPhase.Objection;
+        if (timestamp < voteTimeEnd) {
+            return VotePhase.Objection;
+        }
+        return VotePhase.Closed;
     }
 
     /**
