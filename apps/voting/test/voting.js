@@ -554,25 +554,25 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
       const decreasingTime = 500
 
       // Allow to setting to zero
-      receipt = await voting.unsafelyChangeObjectionTime(increasingTime)
-      assertAmountOfEvents(receipt, 'ChangeObjectionTime')
-      assert.equal(await voting.objectionTime(), increasingTime, 'should have changed acceptance time')
+      receipt = await voting.unsafelyChangeObjectionPhaseTime(increasingTime)
+      assertAmountOfEvents(receipt, 'ChangeObjectionPhaseTime')
+      assert.equal(await voting.objectionPhaseTime(), increasingTime, 'should have changed acceptance time')
 
       // Allow to increasing voteTime
-      receipt = await voting.unsafelyChangeObjectionTime(zeroTime)
-      assertAmountOfEvents(receipt, 'ChangeObjectionTime')
-      assert.equal(await voting.objectionTime(), zeroTime, 'should have changed acceptance time')
+      receipt = await voting.unsafelyChangeObjectionPhaseTime(zeroTime)
+      assertAmountOfEvents(receipt, 'ChangeObjectionPhaseTime')
+      assert.equal(await voting.objectionPhaseTime(), zeroTime, 'should have changed acceptance time')
 
       // Allow to decreasing voteTime
-      receipt = await voting.unsafelyChangeObjectionTime(decreasingTime)
-      assertAmountOfEvents(receipt, 'ChangeObjectionTime')
-      assert.equal(await voting.objectionTime(), decreasingTime, 'should have changed acceptance time')
+      receipt = await voting.unsafelyChangeObjectionPhaseTime(decreasingTime)
+      assertAmountOfEvents(receipt, 'ChangeObjectionPhaseTime')
+      assert.equal(await voting.objectionPhaseTime(), decreasingTime, 'should have changed acceptance time')
     })
 
     it('reverts if voteTime < objectionTime', async () => {
-      await assertRevert(voting.unsafelyChangeObjectionTime(votingDuration + 1), ERRORS.VOTING_OBJ_TIME_TOO_BIG)
+      await assertRevert(voting.unsafelyChangeObjectionPhaseTime(votingDuration + 1), ERRORS.VOTING_OBJ_TIME_TOO_BIG)
 
-      await voting.unsafelyChangeObjectionTime(votingDuration - 1)
+      await voting.unsafelyChangeObjectionPhaseTime(votingDuration - 1)
 
       await assertRevert(voting.unsafelyChangeVoteTime(votingDuration - 1), ERRORS.VOTING_VOTE_TIME_TOO_SMALL)
       await assertRevert(voting.unsafelyChangeVoteTime(0), ERRORS.VOTING_VOTE_TIME_TOO_SMALL)
