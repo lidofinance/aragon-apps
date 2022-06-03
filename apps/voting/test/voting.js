@@ -528,14 +528,14 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
     })
 
     it('simple change vote time', async () => {
-      const zeroTime = 0
+      const smallest = 1
       const increasingTime = 1500
       const decreasingTime = 500
 
-      // Allow to setting to zero
-      receipt = await voting.unsafelyChangeVoteTime(zeroTime)
+      // Allow to setting to smallest
+      receipt = await voting.unsafelyChangeVoteTime(smallest)
       assertAmountOfEvents(receipt, 'ChangeVoteTime')
-      assert.equal(await voting.voteTime(), zeroTime, 'should have changed acceptance time')
+      assert.equal(await voting.voteTime(), smallest, 'should have changed acceptance time')
 
       // Allow to increasing voteTime
       receipt = await voting.unsafelyChangeVoteTime(increasingTime)
@@ -546,6 +546,36 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
       receipt = await voting.unsafelyChangeVoteTime(decreasingTime)
       assertAmountOfEvents(receipt, 'ChangeVoteTime')
       assert.equal(await voting.voteTime(), decreasingTime, 'should have changed acceptance time')
+    })
+
+    it('simple change obj time', async () => {
+      const increasingTime = 999
+      const zeroTime = 0
+      const decreasingTime = 500
+
+      // Allow to setting to zero
+      receipt = await voting.unsafelyChangeObjectionTime(increasingTime)
+      assertAmountOfEvents(receipt, 'ChangeObjectionTime')
+      assert.equal(await voting.objectionTime(), increasingTime, 'should have changed acceptance time')
+
+      // Allow to increasing voteTime
+      receipt = await voting.unsafelyChangeObjectionTime(zeroTime)
+      assertAmountOfEvents(receipt, 'ChangeObjectionTime')
+      assert.equal(await voting.objectionTime(), zeroTime, 'should have changed acceptance time')
+
+      // Allow to decreasing voteTime
+      receipt = await voting.unsafelyChangeObjectionTime(decreasingTime)
+      assertAmountOfEvents(receipt, 'ChangeObjectionTime')
+      assert.equal(await voting.objectionTime(), decreasingTime, 'should have changed acceptance time')
+    })
+
+    it('reverts if voteTime < objectionTime', async () => {
+      await assertRevert(voting.unsafelyChangeObjectionTime(votingDuration + 1), ERRORS.VOTING_OBJ_TIME_TOO_BIG)
+
+      await voting.unsafelyChangeObjectionTime(votingDuration - 1)
+
+      await assertRevert(voting.unsafelyChangeVoteTime(votingDuration - 1), ERRORS.VOTING_VOTE_TIME_TOO_SMALL)
+      await assertRevert(voting.unsafelyChangeVoteTime(0), ERRORS.VOTING_VOTE_TIME_TOO_SMALL)
     })
 
     it('re-open finished vote through changing of voting time', async () => {
@@ -571,10 +601,12 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
       voteState = await voting.getVote(voteId)
 
+      await voting.mockIncreaseTime(1001)
+
       assert.isTrue(voteState[0], 'vote should be open')
       assert.isFalse(voteState[1], 'vote should not be executed')
 
-      await voting.unsafelyChangeVoteTime(0)
+      await voting.unsafelyChangeVoteTime(1)
       voteState = await voting.getVote(voteId)
 
       assert.isFalse(voteState[0], 'vote should be closed after time decreasing')
