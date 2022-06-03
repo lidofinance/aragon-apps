@@ -63,7 +63,7 @@ contract Voting is IForwarder, AragonApp {
     // We are mimicing an array, we use a mapping instead to make app upgrade more graceful
     mapping (uint256 => Vote) internal votes;
     uint256 public votesLength;
-    uint64 public objectionTime;
+    uint64 public objectionPhaseTime;
 
     event StartVote(uint256 indexed voteId, address indexed creator, string metadata);
     event CastVote(uint256 indexed voteId, address indexed voter, bool supports, uint256 stake);
@@ -72,7 +72,7 @@ contract Voting is IForwarder, AragonApp {
     event ChangeSupportRequired(uint64 supportRequiredPct);
     event ChangeMinQuorum(uint64 minAcceptQuorumPct);
     event ChangeVoteTime(uint64 voteTime);
-    event ChangeObjectionTime(uint64 objectionTime);
+    event ChangeObjectionPhaseTime(uint64 objectionPhaseTime);
 
     modifier voteExists(uint256 _voteId) {
         require(_voteId < votesLength, ERROR_NO_VOTE);
@@ -84,10 +84,10 @@ contract Voting is IForwarder, AragonApp {
     * @param _token MiniMeToken Address that will be used as governance token
     * @param _supportRequiredPct Percentage of yeas in casted votes for a vote to succeed (expressed as a percentage of 10^18; eg. 10^16 = 1%, 10^18 = 100%)
     * @param _minAcceptQuorumPct Percentage of yeas in total possible votes for a vote to succeed (expressed as a percentage of 10^18; eg. 10^16 = 1%, 10^18 = 100%)
-    * @param _voteTime The duration of voting in seconds.
-    * @param _objectionTime The duration of the objection vote phase, i.e. seconds that a vote will be open after the main vote phase ends for token holders to object to the outcome. Main phase duration is calculated as `voteTime - objectionTime`.
+    * @param _voteTime Total duration of voting in seconds.
+    * @param _objectionPhaseTime The duration of the objection vote phase, i.e. seconds that a vote will be open after the main vote phase ends for token holders to object to the outcome. Main phase duration is calculated as `voteTime - objectionPhaseTime`.
     */
-    function initialize(MiniMeToken _token, uint64 _supportRequiredPct, uint64 _minAcceptQuorumPct, uint64 _voteTime, uint64 _objectionTime)
+    function initialize(MiniMeToken _token, uint64 _supportRequiredPct, uint64 _minAcceptQuorumPct, uint64 _voteTime, uint64 _objectionPhaseTime)
         external
         onlyInit
     {
@@ -95,13 +95,13 @@ contract Voting is IForwarder, AragonApp {
 
         require(_minAcceptQuorumPct <= _supportRequiredPct, ERROR_INIT_PCTS);
         require(_supportRequiredPct < PCT_BASE, ERROR_INIT_SUPPORT_TOO_BIG);
-        require(_voteTime > _objectionTime, ERROR_INIT_OBJ_TIME_TOO_BIG);
+        require(_voteTime > _objectionPhaseTime, ERROR_INIT_OBJ_TIME_TOO_BIG);
 
         token = _token;
         supportRequiredPct = _supportRequiredPct;
         minAcceptQuorumPct = _minAcceptQuorumPct;
         voteTime = _voteTime;
-        objectionTime = _objectionTime;
+        objectionPhaseTime = _objectionPhaseTime;
     }
 
     /**
@@ -141,24 +141,24 @@ contract Voting is IForwarder, AragonApp {
         external
         auth(UNSAFELY_MODIFY_VOTE_TIME_ROLE)
     {
-        require(_voteTime > objectionTime, ERROR_CHANGE_VOTE_TIME);
+        require(_voteTime > objectionPhaseTime, ERROR_CHANGE_VOTE_TIME);
         voteTime = _voteTime;
 
         emit ChangeVoteTime(_voteTime);
     }
 
     /**
-    * @notice Change the objection phase duration to `_objectionTime` sec. The change affects all existing unexecuted votes, so be really careful with it
-    * @param _objectionTime New objection time
+    * @notice Change the objection phase duration to `_objectionPhaseTime` sec. The change affects all existing unexecuted votes, so be really careful with it
+    * @param _objectionPhaseTime New objection time
     */
-    function unsafelyChangeObjectionTime(uint64 _objectionTime)
+    function unsafelyChangeObjectionPhaseTime(uint64 _objectionPhaseTime)
         external
         auth(UNSAFELY_MODIFY_VOTE_TIME_ROLE)
     {
-        require(voteTime > _objectionTime, ERROR_CHANGE_OBJECTION_TIME);
-        objectionTime = _objectionTime;
+        require(voteTime > _objectionPhaseTime, ERROR_CHANGE_OBJECTION_TIME);
+        objectionPhaseTime = _objectionPhaseTime;
 
-        emit ChangeObjectionTime(_objectionTime);
+        emit ChangeObjectionPhaseTime(_objectionPhaseTime);
     }
 
     /**
@@ -468,7 +468,7 @@ contract Voting is IForwarder, AragonApp {
     function _getVotePhase(Vote storage vote_) internal view returns (VotePhase) {
         uint64 timestamp = getTimestamp64();
         uint64 voteTimeEnd = vote_.startDate.add(voteTime);
-        if (timestamp < voteTimeEnd.sub(objectionTime)) {
+        if (timestamp < voteTimeEnd.sub(objectionPhaseTime)) {
             return VotePhase.Main;
         }
         if (timestamp < voteTimeEnd) {
