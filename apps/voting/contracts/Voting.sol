@@ -95,7 +95,7 @@ contract Voting is IForwarder, AragonApp {
 
         require(_minAcceptQuorumPct <= _supportRequiredPct, ERROR_INIT_PCTS);
         require(_supportRequiredPct < PCT_BASE, ERROR_INIT_SUPPORT_TOO_BIG);
-        require(_voteTime >= _objectionTime, ERROR_INIT_OBJ_TIME_TOO_BIG);
+        require(_voteTime > _objectionTime, ERROR_INIT_OBJ_TIME_TOO_BIG);
 
         token = _token;
         supportRequiredPct = _supportRequiredPct;
@@ -141,7 +141,7 @@ contract Voting is IForwarder, AragonApp {
         external
         auth(UNSAFELY_MODIFY_VOTE_TIME_ROLE)
     {
-        require(_voteTime >= objectionTime, ERROR_CHANGE_VOTE_TIME);
+        require(_voteTime > objectionTime, ERROR_CHANGE_VOTE_TIME);
         voteTime = _voteTime;
 
         emit ChangeVoteTime(_voteTime);
@@ -155,7 +155,7 @@ contract Voting is IForwarder, AragonApp {
         external
         auth(UNSAFELY_MODIFY_VOTE_TIME_ROLE)
     {
-        require(voteTime >= _objectionTime, ERROR_CHANGE_OBJECTION_TIME);
+        require(voteTime > _objectionTime, ERROR_CHANGE_OBJECTION_TIME);
         objectionTime = _objectionTime;
 
         emit ChangeObjectionTime(_objectionTime);
