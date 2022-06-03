@@ -34,8 +34,13 @@ contract Voting is IForwarder, AragonApp {
     string private constant ERROR_CAN_NOT_EXECUTE = "VOTING_CAN_NOT_EXECUTE";
     string private constant ERROR_CAN_NOT_FORWARD = "VOTING_CAN_NOT_FORWARD";
     string private constant ERROR_NO_VOTING_POWER = "VOTING_NO_VOTING_POWER";
+    string private constant ERROR_CHANGE_VOTE_TIME = "VOTING_VOTE_TIME_TOO_SMALL";
+    string private constant ERROR_CHANGE_OBJECTION_TIME = "VOTING_OBJ_TIME_TOO_BIG";
+    string private constant ERROR_INIT_OBJ_TIME_TOO_BIG = "VOTING_INIT_OBJ_TIME_TOO_BIG";
 
     enum VoterState { Absent, Yea, Nay }
+
+    enum VotingPhase { Main, Objection }
 
     struct Vote {
         bool executed;
@@ -79,8 +84,8 @@ contract Voting is IForwarder, AragonApp {
     * @param _token MiniMeToken Address that will be used as governance token
     * @param _supportRequiredPct Percentage of yeas in casted votes for a vote to succeed (expressed as a percentage of 10^18; eg. 10^16 = 1%, 10^18 = 100%)
     * @param _minAcceptQuorumPct Percentage of yeas in total possible votes for a vote to succeed (expressed as a percentage of 10^18; eg. 10^16 = 1%, 10^18 = 100%)
-    * @param _voteTime The duration of the main vote phase, i.e. seconds that a vote will be open for token holders to both support and object to the outcome
-    * @param _objectionTime The duration of the objection vote phase, i.e. seconds that a vote will be open after the main vote phase ends for token holders to object to the outcome
+    * @param _voteTime The duration of voting in seconds.
+    * @param _objectionTime The duration of the objection vote phase, i.e. seconds that a vote will be open after the main vote phase ends for token holders to object to the outcome. Main phase duration is calculated as `voteTime - objectionTime`.
     */
     function initialize(MiniMeToken _token, uint64 _supportRequiredPct, uint64 _minAcceptQuorumPct, uint64 _voteTime, uint64 _objectionTime)
         external
@@ -90,6 +95,7 @@ contract Voting is IForwarder, AragonApp {
 
         require(_minAcceptQuorumPct <= _supportRequiredPct, ERROR_INIT_PCTS);
         require(_supportRequiredPct < PCT_BASE, ERROR_INIT_SUPPORT_TOO_BIG);
+        require(_voteTime >= _objectionTime, ERROR_INIT_OBJ_TIME_TOO_BIG);
 
         token = _token;
         supportRequiredPct = _supportRequiredPct;
@@ -135,6 +141,7 @@ contract Voting is IForwarder, AragonApp {
         external
         auth(UNSAFELY_MODIFY_VOTE_TIME_ROLE)
     {
+        require(_voteTime >= objectionTime, ERROR_CHANGE_VOTE_TIME);
         voteTime = _voteTime;
 
         emit ChangeVoteTime(_voteTime);
@@ -148,6 +155,7 @@ contract Voting is IForwarder, AragonApp {
         external
         auth(UNSAFELY_MODIFY_VOTE_TIME_ROLE)
     {
+        require(voteTime >= _objectionTime, ERROR_CHANGE_OBJECTION_TIME);
         objectionTime = _objectionTime;
 
         emit ChangeObjectionTime(_objectionTime);
@@ -190,7 +198,8 @@ contract Voting is IForwarder, AragonApp {
     * @param _executesIfDecided_deprecated Whether the vote should execute its action if it becomes decided
     */
     function vote(uint256 _voteId, bool _supports, bool _executesIfDecided_deprecated) external voteExists(_voteId) {
-        require(_canVote(_voteId, msg.sender) || (!_supports && _canObject(_voteId, msg.sender)), ERROR_CAN_NOT_VOTE);
+        require(_canVote(_voteId, msg.sender), ERROR_CAN_NOT_VOTE);
+        require(!_supports || _getVotingPhase(votes[_voteId]) == VotingPhase.Main, ERROR_CAN_NOT_VOTE);
         _vote(_voteId, _supports, msg.sender);
     }
 
@@ -262,21 +271,20 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @notice Tells whether `_sender` can participate in the objection phase of the vote #`_voteId`
+    * @notice Tells the current phase of the vote #`_voteId`
     * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
     *      created via `newVote(),` which requires initialization
     * @param _voteId Vote identifier
-    * @param _voter address of the voter to check
-    * @return True if the given voter can participate in the objection phase of a certain vote, false otherwise
+    * @return VotingPhase.Main or VotingPhase.Objection
     */
-    function canObject(uint256 _voteId, address _voter) external view voteExists(_voteId) returns (bool) {
-        return _canObject(_voteId, _voter);
+    function getVotingPhase(uint256 _voteId) external view voteExists(_voteId) returns (VotingPhase) {
+        return _getVotingPhase(votes[_voteId]);
     }
 
     /**
     * @dev Return all information for a vote by its ID
     * @param _voteId Vote identifier
-    * @return true if the vote open for both support and objection
+    * @return true if the vote is open
     * @return Vote executed status
     * @return Vote start date
     * @return Vote snapshot block
@@ -286,7 +294,7 @@ contract Voting is IForwarder, AragonApp {
     * @return Vote nays amount
     * @return Vote power
     * @return Vote script
-    * @return true if the vote open for objection
+    * @return Vote phase. Can be VotingPhase.Main or VotingPhase.Objection
     */
     function getVote(uint256 _voteId)
         public
@@ -303,7 +311,7 @@ contract Voting is IForwarder, AragonApp {
             uint256 nay,
             uint256 votingPower,
             bytes script,
-            bool openForObjection
+            VotingPhase phase
         )
     {
         Vote storage vote_ = votes[_voteId];
@@ -318,7 +326,7 @@ contract Voting is IForwarder, AragonApp {
         nay = vote_.nay;
         votingPower = vote_.votingPower;
         script = vote_.executionScript;
-        openForObjection = _isVoteOpenForObjection(vote_);
+        phase = _getVotingPhase(vote_);
     }
 
     /**
@@ -387,7 +395,7 @@ contract Voting is IForwarder, AragonApp {
 
         emit CastVote(_voteId, _voter, _supports, voterStake);
 
-        if (!_isVoteOpen(vote_)) { // objection phase
+        if (_getVotingPhase(vote_) == VotingPhase.Objection) { // objection phase
             emit CastObjection(_voteId, _voter, voterStake);
         }
     }
@@ -430,11 +438,6 @@ contract Voting is IForwarder, AragonApp {
             return false;
         }
 
-        // One can cast at least 'no' vote
-        if (_isVoteOpenForObjection(vote_)) {
-            return false;
-        }
-
         // Has enough support?
         uint256 voteYea = vote_.yea;
         uint256 totalVotes = voteYea.add(vote_.nay);
@@ -459,12 +462,14 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @dev Internal function to check if a voter can at least object to a vote outcome. It assumes the queried vote exists.
-    * @return True if the given voter can object to a certain vote outcome, false otherwise
+    * @dev Internal function to get the current phase for the vote. It assumes the queried vote exists.
+    * @return VotingPhase.Main if one can vote yes or no and VotingPhase.Objection if one can vote only no
     */
-    function _canObject(uint256 _voteId, address _voter) internal view returns (bool) {
-        Vote storage vote_ = votes[_voteId];
-        return _isVoteOpenForObjection(vote_) && token.balanceOfAt(_voter, vote_.snapshotBlock) > 0;
+    function _getVotingPhase(Vote storage vote_) internal view returns (VotingPhase) {
+        if (getTimestamp64() < vote_.startDate.add(voteTime).sub(objectionTime)) {
+            return VotingPhase.Main;
+        }
+        return VotingPhase.Objection;
     }
 
     /**
@@ -473,14 +478,6 @@ contract Voting is IForwarder, AragonApp {
     */
     function _isVoteOpen(Vote storage vote_) internal view returns (bool) {
         return getTimestamp64() < vote_.startDate.add(voteTime) && !vote_.executed;
-    }
-
-    /**
-    * @dev Internal function to check if a vote is still open for objection
-    * @return True if less than voteTime + objectionTime has passed since the vote start
-    */
-    function _isVoteOpenForObjection(Vote storage vote_) internal view returns (bool) {
-        return getTimestamp64() < vote_.startDate.add(voteTime).add(objectionTime) && !vote_.executed;
     }
 
     /**
