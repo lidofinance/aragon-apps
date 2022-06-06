@@ -2,6 +2,7 @@ const ERRORS = require('./helpers/errors')
 const { assertBn, assertRevert, assertAmountOfEvents } = require('@aragon/contract-helpers-test/src/asserts')
 const { pct16, bn, bigExp, getEventArgument, ZERO_ADDRESS } = require('@aragon/contract-helpers-test')
 const { newDao, installNewApp, encodeCallScript, ANY_ENTITY, EMPTY_CALLS_SCRIPT } = require('@aragon/contract-helpers-test/src/aragon-os')
+const { assert } = require('chai')
 
 const Voting = artifacts.require('VotingMock')
 
@@ -249,6 +250,42 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
 
           assertBn(state[7], bigExp(29, decimals), 'nay vote should have been counted')
           assert.equal(voterState, VOTER_STATE.NAY, 'holder29 should have nay voter status')
+        })
+
+        it('holder can object', async () => {
+          await voting.mockIncreaseTime(mainPhase + 1)
+          assertRevert(voting.vote(voteId, true, false, { from: holder29 }), ERRORS.VOTING_CAN_NOT_VOTE)
+          assertRevert(voting.vote(voteId, true, true, { from: holder29 }), ERRORS.VOTING_CAN_NOT_VOTE)
+          ;({
+              open, executed, startDate, snapshotBlock, supportRequired, minAcceptQuorum,
+              yea, nay, votingPower, script, phase
+            } = await voting.getVote(voteId))
+          assert.equal(yea, 0, 'should be no votes yet')
+          assert.equal(nay, 0, 'should be no votes yet')
+
+          await voting.vote(voteId, false, false, { from: holder29 })
+          ;({
+            open, executed, startDate, snapshotBlock, supportRequired, minAcceptQuorum,
+            yea, nay, votingPower, script, phase
+          } = await voting.getVote(voteId))
+          assert.equal(yea, 0, 'should be no yea votes')
+          assert.notEqual(nay, 0, 'should some nay votes')
+          const nayBefore = nay
+
+          assertRevert(voting.vote(voteId, true, false, { from: holder29 }), ERRORS.VOTING_CAN_NOT_VOTE)
+          await voting.vote(voteId, false, false, { from: holder29 })
+          assert.equal(yea, 0, 'should be no yea')
+          assert.equal(nay, nayBefore, 'should be some nay votes')
+
+          await voting.mockIncreaseTime(objectionPhase)
+        })
+
+        it('canVote check works', async () => {
+          assert.equal(await voting.canVote(voteId, holder29), true, 'should be able to vote')
+          await voting.mockIncreaseTime(mainPhase + 1)
+          assert.equal(await voting.canVote(voteId, holder29), true, 'should be unable to vote')
+          await voting.mockIncreaseTime(objectionPhase)
+          assert.equal(await voting.canVote(voteId, holder29), false, 'should be unable to vote')
         })
 
         it('holder can modify vote', async () => {
