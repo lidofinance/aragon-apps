@@ -134,6 +134,32 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
         await voting.executeVote(voteId)
       })
 
+      it('can create newVote with extended API version', async () => {
+        let voteId = createdVoteId(await voting.methods['newVote(bytes,string,bool,bool)'](encodeCallScript([]), '', false, false, { from: holder51 }))
+        await voting.mockIncreaseTime(votingDuration + 1)
+        assertRevert(voting.executeVote(voteId), ERRORS.VOTING_CAN_NOT_EXECUTE)
+        assert.equal(await voting.canExecute(voteId), false, 'should be non-executable')
+
+        voteId = createdVoteId(await voting.methods['newVote(bytes,string,bool,bool)'](encodeCallScript([]), '', true, false, { from: holder51 }))
+        await voting.mockIncreaseTime(votingDuration + 1)
+        await voting.executeVote(voteId)
+        assert.equal(await voting.canExecute(voteId), false, 'should be in the executed state')
+      })
+
+      it('check executesIfDecided do nothing (deprecated)', async () => {
+        let voteId = createdVoteId(await voting.methods['newVote(bytes,string,bool,bool)'](encodeCallScript([]), '', true, false, { from: holder51 }))
+        assert.equal(await voting.canExecute(voteId), false, 'should be in the unexecuted state')
+        await voting.mockIncreaseTime(votingDuration + 1)
+        await voting.executeVote(voteId)
+        assert.equal(await voting.canExecute(voteId), false, 'should be in the executed state')
+
+        voteId = createdVoteId(await voting.methods['newVote(bytes,string,bool,bool)'](encodeCallScript([]), '', true, true, { from: holder51 }))
+        assert.equal(await voting.canExecute(voteId), false, 'should be in the unexecuted state')
+        await voting.mockIncreaseTime(votingDuration + 1)
+        await voting.executeVote(voteId)
+        assert.equal(await voting.canExecute(voteId), false, 'should be in the executed state')
+      })
+
       it('execution throws if any action on script throws', async () => {
         const action = { to: executionTarget.address, calldata: executionTarget.contract.methods.execute().encodeABI() }
         let script = encodeCallScript([action])
@@ -158,7 +184,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
           const action = { to: executionTarget.address, calldata: executionTarget.contract.methods.execute().encodeABI() }
           script = encodeCallScript([action, action])
 
-          const receipt = await voting.newVoteExt(script, 'metadata', false, false, { from: holder51 });
+          const receipt = await voting.methods['newVote(bytes,string,bool,bool)'](script, 'metadata', false, false, { from: holder51 });
           voteId = getEventArgument(receipt, 'StartVote', 'voteId')
           creator = getEventArgument(receipt, 'StartVote', 'creator')
           metadata = getEventArgument(receipt, 'StartVote', 'metadata')
@@ -396,7 +422,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
 
     context('new vote parameters', () => {
       it('creating vote as holder does not execute vote (even if _canExecute param says so)', async () => {
-        const voteId = createdVoteId(await voting.newVoteExt(EMPTY_CALLS_SCRIPT, 'metadata', true, true, { from: holder1 }))
+        const voteId = createdVoteId(await voting.methods['newVote(bytes,string,bool,bool)'](EMPTY_CALLS_SCRIPT, 'metadata', true, true, { from: holder1 }))
 
         const { open, executed } = await voting.getVote(voteId)
         assert.isTrue(open, 'vote should be closed')
@@ -404,7 +430,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
       })
 
       it("creating vote as holder doesn't execute vote if _canExecute param doesn't says so", async () => {
-        const voteId = createdVoteId(await voting.newVoteExt(EMPTY_CALLS_SCRIPT, 'metadata', true, false, { from: holder1 }))
+        const voteId = createdVoteId(await voting.methods['newVote(bytes,string,bool,bool)'](EMPTY_CALLS_SCRIPT, 'metadata', true, false, { from: holder1 }))
 
         const { open, executed } = await voting.getVote(voteId)
         assert.isTrue(open, 'vote should be open')
