@@ -304,6 +304,33 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
       token = await MiniMeToken.new(ZERO_ADDRESS, ZERO_ADDRESS, 0, 'n', 0, 'n', true) // empty parameters minime
     })
 
+    it('fails if voteTime less or equal to objectionTime', async () => {
+      let badVoteTime = objectionPhase
+      const neededSupport = pct16(50)
+      const minimumAcceptanceQuorum = pct16(20)
+
+      await assertRevert(
+        voting.initialize(
+          token.address,
+          neededSupport,
+          minimumAcceptanceQuorum,
+          badVoteTime,
+          objectionPhase
+        ), ERRORS.VOTING_INIT_OBJ_TIME_TOO_BIG
+      )
+
+      badVoteTime = objectionPhase / 2
+      await assertRevert(
+        voting.initialize(
+          token.address,
+          neededSupport,
+          minimumAcceptanceQuorum,
+          badVoteTime,
+          objectionPhase
+        ), ERRORS.VOTING_INIT_OBJ_TIME_TOO_BIG
+      )
+    })
+
     it('fails if min acceptance quorum is greater than min support', async () => {
       const neededSupport = pct16(20)
       const minimumAcceptanceQuorum = pct16(50)
