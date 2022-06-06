@@ -1,5 +1,5 @@
 const ERRORS = require('./helpers/errors')
-const { assertBn, assertRevert, assertAmountOfEvents } = require('@aragon/contract-helpers-test/src/asserts')
+const { assertBn, assertRevert, assertAmountOfEvents, assertEvent } = require('@aragon/contract-helpers-test/src/asserts')
 const { pct16, bn, bigExp, getEventArgument, ZERO_ADDRESS } = require('@aragon/contract-helpers-test')
 const { newDao, installNewApp, encodeCallScript, ANY_ENTITY, EMPTY_CALLS_SCRIPT } = require('@aragon/contract-helpers-test/src/aragon-os')
 const { assert } = require('chai')
@@ -235,7 +235,11 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
           // with new quorum at 50% it shouldn't have, but since min quorum is snapshotted
           // it will succeed
 
-          await voting.vote(voteId, true, true, { from: holder29 })
+          const tx = await voting.vote(voteId, true, true, { from: holder29 })
+          assertEvent(tx, 'CastVote', { expectedArgs: { voteId: voteId, voter: holder29, supports: true }})
+          assertAmountOfEvents(tx, 'CastVote', { expectedAmount: 1 })
+          assertAmountOfEvents(tx, 'CastObjection', { expectedAmount: 0 })
+
           await voting.mockIncreaseTime(votingDuration + 1)
 
           const state = await voting.getVote(voteId)
@@ -244,7 +248,11 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
         })
 
         it('holder can vote', async () => {
-          await voting.vote(voteId, false, true, { from: holder29 })
+          const tx = await voting.vote(voteId, false, true, { from: holder29 })
+          assertEvent(tx, 'CastVote', { expectedArgs: { voteId: voteId, voter: holder29, supports: false }})
+          assertAmountOfEvents(tx, 'CastVote', { expectedAmount: 1 })
+          assertAmountOfEvents(tx, 'CastObjection', { expectedAmount: 0 })
+
           const state = await voting.getVote(voteId)
           const voterState = await voting.getVoterState(voteId, holder29)
 
@@ -263,7 +271,12 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
           assert.equal(yea, 0, 'should be no votes yet')
           assert.equal(nay, 0, 'should be no votes yet')
 
-          await voting.vote(voteId, false, false, { from: holder29 })
+          let tx = await voting.vote(voteId, false, false, { from: holder29 })
+          assertEvent(tx, 'CastVote', { expectedArgs: { voteId: voteId, voter: holder29, supports: false }})
+          assertEvent(tx, 'CastObjection', { expectedArgs: { voteId: voteId, voter: holder29 }})
+          assertAmountOfEvents(tx, 'CastVote', { expectedAmount: 1 })
+          assertAmountOfEvents(tx, 'CastObjection', { expectedAmount: 1 })
+
           ;({
             open, executed, startDate, snapshotBlock, supportRequired, minAcceptQuorum,
             yea, nay, votingPower, script, phase
@@ -273,7 +286,12 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
           const nayBefore = nay
 
           assertRevert(voting.vote(voteId, true, false, { from: holder29 }), ERRORS.VOTING_CAN_NOT_VOTE)
-          await voting.vote(voteId, false, false, { from: holder29 })
+          tx = await voting.vote(voteId, false, false, { from: holder29 })
+          assertEvent(tx, 'CastVote', { expectedArgs: { voteId: voteId, voter: holder29, supports: false }})
+          assertEvent(tx, 'CastObjection', { expectedArgs: { voteId: voteId, voter: holder29 }})
+          assertAmountOfEvents(tx, 'CastVote', { expectedAmount: 1 })
+          assertAmountOfEvents(tx, 'CastObjection', { expectedAmount: 1 })
+
           assert.equal(yea, 0, 'should be no yea')
           assert.equal(nay, nayBefore, 'should be some nay votes')
 
@@ -288,10 +306,33 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
           assert.equal(await voting.canVote(voteId, holder29), false, 'should be unable to vote')
         })
 
+        it('getVotePhase works', async () => {
+          const MAIN_PHASE = 0
+          assert.equal(await voting.getVotePhase(voteId), MAIN_PHASE, 'should be main phase')
+          await voting.mockIncreaseTime(mainPhase + 1)
+          const OBJECTION_PHASE = 1
+          assert.equal(await voting.getVotePhase(voteId), OBJECTION_PHASE, 'should be unable to vote')
+          await voting.mockIncreaseTime(objectionPhase)
+          const CLOSED = 2
+          assert.equal(await voting.getVotePhase(voteId), CLOSED, 'should be unable to vote')
+        })
+
         it('holder can modify vote', async () => {
-          await voting.vote(voteId, true, true, { from: holder29 })
-          await voting.vote(voteId, false, true, { from: holder29 })
-          await voting.vote(voteId, true, true, { from: holder29 })
+          let tx = await voting.vote(voteId, true, true, { from: holder29 })
+          assertEvent(tx, 'CastVote', { expectedArgs: { voteId: voteId, voter: holder29, supports: true }})
+          assertAmountOfEvents(tx, 'CastVote', { expectedAmount: 1 })
+          assertAmountOfEvents(tx, 'CastObjection', { expectedAmount: 0 })
+
+          tx = await voting.vote(voteId, false, true, { from: holder29 })
+          assertEvent(tx, 'CastVote', { expectedArgs: { voteId: voteId, voter: holder29, supports: false }})
+          assertAmountOfEvents(tx, 'CastVote', { expectedAmount: 1 })
+          assertAmountOfEvents(tx, 'CastObjection', { expectedAmount: 0 })
+
+          tx = await voting.vote(voteId, true, true, { from: holder29 })
+          assertEvent(tx, 'CastVote', { expectedArgs: { voteId: voteId, voter: holder29, supports: true }})
+          assertAmountOfEvents(tx, 'CastVote', { expectedAmount: 1 })
+          assertAmountOfEvents(tx, 'CastObjection', { expectedAmount: 0 })
+
           const state = await voting.getVote(voteId)
 
           assertBn(state[6], bigExp(29, decimals), 'yea vote should have been counted')
