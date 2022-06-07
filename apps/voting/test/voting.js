@@ -18,7 +18,7 @@ const VOTER_STATE = ['ABSENT', 'YEA', 'NAY'].reduce((state, key, index) => {
 
 
 contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, nonHolder]) => {
-  let votingBase, voting, token, executionTarget
+  let votingBase, voting, token, executionTarget, aclP
   let CREATE_VOTES_ROLE, MODIFY_SUPPORT_ROLE, MODIFY_QUORUM_ROLE, UNSAFELY_MODIFY_VOTE_TIME_ROLE
 
   const NOW = 1
@@ -44,6 +44,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
     await acl.createPermission(ANY_ENTITY, voting.address, MODIFY_SUPPORT_ROLE, root, { from: root })
     await acl.createPermission(ANY_ENTITY, voting.address, MODIFY_QUORUM_ROLE, root, { from: root })
     await acl.createPermission(ANY_ENTITY, voting.address, UNSAFELY_MODIFY_VOTE_TIME_ROLE, root, { from: root })
+    aclP = acl
   })
 
   context('normal token supply, common tests', () => {
@@ -138,7 +139,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
       it('can create newVote with extended API version', async () => {
         let voteId = createdVoteId(await voting.methods['newVote(bytes,string,bool,bool)'](encodeCallScript([]), '', false, false, { from: holder51 }))
         await voting.mockIncreaseTime(votingDuration + 1)
-        assertRevert(voting.executeVote(voteId), ERRORS.VOTING_CAN_NOT_EXECUTE)
+        await assertRevert(voting.executeVote(voteId), ERRORS.VOTING_CAN_NOT_EXECUTE)
         assert.equal(await voting.canExecute(voteId), false, 'should be non-executable')
 
         voteId = createdVoteId(await voting.methods['newVote(bytes,string,bool,bool)'](encodeCallScript([]), '', true, false, { from: holder51 }))
@@ -262,8 +263,8 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
 
         it('holder can object', async () => {
           await voting.mockIncreaseTime(mainPhase + 1)
-          assertRevert(voting.vote(voteId, true, false, { from: holder29 }), ERRORS.VOTING_CAN_NOT_VOTE)
-          assertRevert(voting.vote(voteId, true, true, { from: holder29 }), ERRORS.VOTING_CAN_NOT_VOTE)
+          await assertRevert(voting.vote(voteId, true, false, { from: holder29 }), ERRORS.VOTING_CAN_NOT_VOTE)
+          await assertRevert(voting.vote(voteId, true, true, { from: holder29 }), ERRORS.VOTING_CAN_NOT_VOTE)
           ;({
               open, executed, startDate, snapshotBlock, supportRequired, minAcceptQuorum,
               yea, nay, votingPower, script, phase
@@ -285,7 +286,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
           assert.notEqual(nay, 0, 'should some nay votes')
           const nayBefore = nay
 
-          assertRevert(voting.vote(voteId, true, false, { from: holder29 }), ERRORS.VOTING_CAN_NOT_VOTE)
+          await assertRevert(voting.vote(voteId, true, false, { from: holder29 }), ERRORS.VOTING_CAN_NOT_VOTE)
           tx = await voting.vote(voteId, false, false, { from: holder29 })
           assertEvent(tx, 'CastVote', { expectedArgs: { voteId: voteId, voter: holder29, supports: false }})
           assertEvent(tx, 'CastObjection', { expectedArgs: { voteId: voteId, voter: holder29 }})
@@ -668,6 +669,16 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
       executionTarget = await ExecutionTarget.new()
     })
 
+    it('reverts on non-authorized vote time change request', async () => {
+      await aclP.revokePermission(ANY_ENTITY, voting.address, UNSAFELY_MODIFY_VOTE_TIME_ROLE, { from: root })
+
+      const entities = [nonHolder, holder1, holder29, holder51]
+
+      for (ind = 0; ind < entities.length; ++ind) {
+        await assertRevert(voting.unsafelyChangeVoteTime(500, { from: entities[ind] }), 'APP_AUTH_FAILED')
+      }
+    })
+
     it('simple change vote time', async () => {
       const smallest = 1
       const increasingTime = 1500
@@ -687,6 +698,16 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
       receipt = await voting.unsafelyChangeVoteTime(decreasingTime)
       assertAmountOfEvents(receipt, 'ChangeVoteTime')
       assert.equal(await voting.voteTime(), decreasingTime, 'should have changed acceptance time')
+    })
+
+    it('reverts on non-authorized obj time change request', async () => {
+      await aclP.revokePermission(ANY_ENTITY, voting.address, UNSAFELY_MODIFY_VOTE_TIME_ROLE, { from: root })
+
+      const entities = [nonHolder, holder1, holder29, holder51]
+
+      for (ind = 0; ind < entities.length; ++ind) {
+        await assertRevert(voting.unsafelyChangeObjectionPhaseTime(100, { from: entities[ind] }), 'APP_AUTH_FAILED')
+      }
     })
 
     it('simple change obj time', async () => {
