@@ -5,6 +5,7 @@ require('@nomiclabs/hardhat-ganache')
 require('@nomiclabs/hardhat-etherscan')
 require('hardhat-gas-reporter')
 require('solidity-coverage')
+require('hardhat-abi-exporter');
 
 const fs = require('fs')
 const path = require('path')
