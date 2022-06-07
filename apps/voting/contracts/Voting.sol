@@ -259,7 +259,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @notice Tells whether `_voter` can participate in the main phase of the vote #`_voteId`
+    * @notice Tells whether `_voter` can participate in the main or objection phase of the vote #`_voteId`
     * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
     *      created via `newVote(),` which requires initialization
     * @param _voteId Vote identifier
@@ -294,7 +294,7 @@ contract Voting is IForwarder, AragonApp {
     * @return Vote nays amount
     * @return Vote power
     * @return Vote script
-    * @return Vote phase.
+    * @return Vote phase
     */
     function getVote(uint256 _voteId)
         public
