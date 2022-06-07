@@ -292,8 +292,8 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
           assertAmountOfEvents(tx, 'CastVote', { expectedAmount: 1 })
           assertAmountOfEvents(tx, 'CastObjection', { expectedAmount: 1 })
 
-          assert.equal(yea, 0, 'should be no yea')
-          assert.equal(nay, nayBefore, 'should be some nay votes')
+          assert.equal(yea, 0, 'should be no yea votes')
+          assert.equal(nay, nayBefore, 'should be same nay votes')
 
           await voting.mockIncreaseTime(objectionPhase)
         })
@@ -307,14 +307,24 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
         })
 
         it('getVotePhase works', async () => {
+          const extractPhaseFromGetVote = async (voteId) => {
+            const phaseIndex = 10
+            return (await voting.getVote(voteId))[phaseIndex]
+          }
+
           const MAIN_PHASE = 0
           assert.equal(await voting.getVotePhase(voteId), MAIN_PHASE, 'should be main phase')
+          assert.equal(await extractPhaseFromGetVote(voteId), MAIN_PHASE, 'should be main phase')
+
           await voting.mockIncreaseTime(mainPhase + 1)
           const OBJECTION_PHASE = 1
-          assert.equal(await voting.getVotePhase(voteId), OBJECTION_PHASE, 'should be unable to vote')
+          assert.equal(await voting.getVotePhase(voteId), OBJECTION_PHASE, 'should be objection phase')
+          assert.equal(await extractPhaseFromGetVote(voteId), OBJECTION_PHASE, 'should be objection phase')
+
           await voting.mockIncreaseTime(objectionPhase)
           const CLOSED = 2
-          assert.equal(await voting.getVotePhase(voteId), CLOSED, 'should be unable to vote')
+          assert.equal(await voting.getVotePhase(voteId), CLOSED, 'should be closed vote')
+          assert.equal(await extractPhaseFromGetVote(voteId), CLOSED, 'should be closed vote')
         })
 
         it('holder can modify vote', async () => {
