@@ -391,8 +391,10 @@ function marshallVote({
   votingPower,
   yea,
   script,
+  phase,
 }) {
   return {
+    phase,
     executed,
     minAcceptQuorum,
     nay,
