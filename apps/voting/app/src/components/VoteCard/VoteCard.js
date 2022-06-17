@@ -8,6 +8,9 @@ import VotedIndicator from './VotedIndicator'
 import VoteStatus from '../VoteStatus'
 import VoteDescription from '../VoteDescription'
 import You from '../You'
+import { useVotePhase } from '../../hooks/useVotePhase'
+import { PhaseIcon } from '../PhaseIcon'
+import styled from 'styled-components'
 
 function VoteCard({ vote, onOpen }) {
   const theme = useTheme()
@@ -19,7 +22,7 @@ function VoteCard({ vote, onOpen }) {
     voteId,
   } = vote
   const { votingPower, yea, nay } = numData
-  const { open, metadata, description, endDate } = data
+  const { metadata, description } = data
   const options = useMemo(
     () => [
       {
@@ -110,11 +113,7 @@ function VoteCard({ vote, onOpen }) {
           margin-top: ${2 * GU}px;
         `}
       >
-        {open ? (
-          <Timer end={endDate} maxUnits={4} />
-        ) : (
-          <VoteStatus vote={vote} />
-        )}
+        <Phase vote={vote} />
       </div>
     </Card>
   )
@@ -138,4 +137,35 @@ function WrapVoteOption(props) {
   )
 }
 
+function Phase({ vote }) {
+  const { endDate, objectionPhaseStartDate } = vote.data
+  const { isMainPhase, isObjectionPhase } = useVotePhase(vote)
+
+  if (isMainPhase) {
+    return (
+      <Flex>
+        <PhaseIcon vote={vote} />
+        <Timer end={objectionPhaseStartDate} maxUnits={4} />
+      </Flex>
+    )
+  }
+
+  if (isObjectionPhase) {
+    return (
+      <Flex>
+        <PhaseIcon vote={vote} />
+        <Timer end={endDate} maxUnits={4} />
+      </Flex>
+    )
+  }
+
+  return <VoteStatus vote={vote} />
+}
+
 export default VoteCard
+
+const Flex = styled.div`
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+`

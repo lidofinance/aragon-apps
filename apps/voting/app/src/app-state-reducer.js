@@ -12,6 +12,7 @@ function appStateReducer(state) {
     pctBase,
     tokenDecimals,
     voteTime,
+    objectionPhaseTime,
     votes,
     connectedAccountVotes,
   } = state
@@ -43,6 +44,9 @@ function appStateReducer(state) {
             data: {
               ...data,
               executionDate: data.executionDate && new Date(data.executionDate),
+              objectionPhaseStartDate: new Date(
+                data.startDate + voteTime - objectionPhaseTime
+              ),
               endDate: new Date(data.startDate + voteTime),
               minAcceptQuorum: new BN(data.minAcceptQuorum),
               nay: new BN(data.nay),

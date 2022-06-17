@@ -30,6 +30,7 @@ import { percentageList, round, safeDiv } from '../math-utils'
 import { getQuorumProgress } from '../vote-utils'
 import { VOTE_NAY, VOTE_YEA } from '../vote-types'
 import { addressesEqual } from '../web3-utils'
+import VotePhase from '../components/VotePhase'
 
 const formatDate = date => `${format(date, 'yyyy-MM-dd, HH:mm')}`
 
@@ -49,6 +50,7 @@ function VoteDetail({ vote, onBack, onVote, onExecute }) {
     numData,
     voteId,
   } = vote
+
   const { minAcceptQuorum, supportRequired, yea, nay } = numData
   const { creator, description, metadata, open, path: executionPath } = data
   const quorumProgress = getQuorumProgress(vote)
@@ -206,6 +208,20 @@ function VoteDetail({ vote, onBack, onVote, onExecute }) {
         }
         secondary={
           <React.Fragment>
+            <Box
+              heading={
+                <React.Fragment>
+                  Phase
+                  <Help hint="What are voting phases?">
+                    Each voting comes in two phases. In the first phase (or Main
+                    phase), participants can either vote pro or contra, whereas
+                    in the second phase only objections can be submitted.
+                  </Help>
+                </React.Fragment>
+              }
+            >
+              <VotePhase vote={vote} />
+            </Box>
             <Box heading="Status">
               <Status vote={vote} />
             </Box>
@@ -234,7 +250,7 @@ function VoteDetail({ vote, onBack, onVote, onExecute }) {
                     color: ${theme.surfaceContentSecondary};
                   `}
                 >
-                  (>{round(supportRequired * 100, 2)}% needed)
+                  (&gt;{round(supportRequired * 100, 2)}% needed)
                 </span>
               </div>
               <SummaryBar
@@ -271,7 +287,7 @@ function VoteDetail({ vote, onBack, onVote, onExecute }) {
                     color: ${theme.surfaceContentSecondary};
                   `}
                 >
-                  (>{round(minAcceptQuorum * 100, 2)}% needed)
+                  (&gt;{round(minAcceptQuorum * 100, 2)}% needed)
                 </span>
               </div>
               <SummaryBar

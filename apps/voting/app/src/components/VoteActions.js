@@ -4,6 +4,7 @@ import {
   blockExplorerUrl,
   Button,
   GU,
+  Help,
   IconCheck,
   IconConnect,
   IconCross,
@@ -18,6 +19,7 @@ import useExtendedVoteData from '../hooks/useExtendedVoteData'
 import { noop, formatDate } from '../utils'
 import { VOTE_NAY, VOTE_YEA } from '../vote-types'
 import { isVoteAction } from '../vote-utils'
+import { useVotePhase } from '../hooks/useVotePhase'
 
 const VoteActions = React.memo(({ vote, onVoteYes, onVoteNo, onExecute }) => {
   const [ready, setReady] = useState(false)
@@ -68,6 +70,8 @@ const VoteActions = React.memo(({ vote, onVoteYes, onVoteNo, onExecute }) => {
     userBalanceNowPromise,
   ])
 
+  const { canVoteYes, canVoteNo } = useVotePhase(vote)
+
   if (!ready) {
     return null
   }
@@ -117,7 +121,12 @@ const VoteActions = React.memo(({ vote, onVoteYes, onVoteNo, onExecute }) => {
       <div>
         {connectedAccount ? (
           <React.Fragment>
-            <Buttons onClickYes={onVoteYes} onClickNo={onVoteNo} />
+            <Buttons
+              onClickYes={onVoteYes}
+              onClickNo={onVoteNo}
+              disabledYes={!canVoteYes}
+              disabledNo={!canVoteNo}
+            />
             <TokenReference
               snapshotBlock={snapshotBlock}
               startDate={startDate}
@@ -171,7 +180,7 @@ const VoteActions = React.memo(({ vote, onVoteYes, onVoteNo, onExecute }) => {
 
   return (
     <div>
-      <Buttons disabled />
+      <Buttons disabledYes={!canVoteYes} disabledNo={!canVoteNo} />
       <Info mode="warning">
         {userBalanceNow > 0
           ? 'Although the currently connected account holds tokens, it'
@@ -185,18 +194,46 @@ const VoteActions = React.memo(({ vote, onVoteYes, onVoteNo, onExecute }) => {
   )
 })
 
-const Buttons = ({ onClickYes = noop, onClickNo = noop, disabled = false }) => (
+const Buttons = ({
+  onClickYes = noop,
+  onClickNo = noop,
+  disabledYes = false,
+  disabledNo = false,
+}) => (
   <ButtonsContainer>
-    <VotingButton mode="positive" wide disabled={disabled} onClick={onClickYes}>
+    <VotingButton
+      mode="positive"
+      wide
+      disabled={disabledYes}
+      onClick={onClickYes}
+    >
       <IconCheck
         size="small"
         css={`
           margin-right: ${1 * GU}px;
         `}
       />
-      Yes
+      Yes{' '}
+      {disabledYes && (
+        <div
+          css={`
+            margin-left: 6px;
+          `}
+        >
+          <Help hint="What are voting phases?">
+            Each voting comes in two phases. In the first phase (or Main phase),
+            participants can either vote pro or contra, whereas in the second
+            phase only objections can be submitted.
+          </Help>
+        </div>
+      )}
     </VotingButton>
-    <VotingButton mode="negative" wide disabled={disabled} onClick={onClickNo}>
+    <VotingButton
+      mode="negative"
+      wide
+      disabled={disabledNo}
+      onClick={onClickNo}
+    >
       <IconCross
         size="small"
         css={`

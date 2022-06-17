@@ -2,6 +2,7 @@ const voteSettings = [
   ['token', 'tokenAddress'],
   ['voteTime', 'voteTime', 'time'],
   ['PCT_BASE', 'pctBase', 'bignumber'],
+  ['objectionPhaseTime', 'objectionPhaseTime', 'time'],
 ]
 
 export function hasLoadedVoteSettings(state) {
