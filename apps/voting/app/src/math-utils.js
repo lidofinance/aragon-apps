@@ -160,3 +160,11 @@ export function scaleBNValuesSet(
 
   return scaledValues.map(p => p.scaledValue)
 }
+
+export const dateToUnixTimestamp = date => {
+  return Math.floor(date.getTime() / 1000)
+}
+
+export const unixTimestampToDate = unixTs => {
+  return new Date(unixTs * 1000)
+}
