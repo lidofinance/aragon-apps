@@ -109,8 +109,9 @@ const VoteActions = React.memo(({ vote, onVoteYes, onVoteNo, onExecute }) => {
           Change my vote
         </Button>
         <Info>
-          While the voting period is open, you can{' '}
-          <strong>change your vote</strong> as many times as you wish.
+          During the main phase, you can <strong>change your vote</strong> as
+          many times as you wish. In the objections phase, however, you can only
+          change your vote to <strong>NO</strong>.
         </Info>
       </div>
     )
