@@ -9,7 +9,6 @@ import VoteStatus from '../VoteStatus'
 import VoteDescription from '../VoteDescription'
 import You from '../You'
 import { useVotePhase } from '../../hooks/useVotePhase'
-import { PhaseIcon } from '../PhaseIcon'
 import styled from 'styled-components'
 
 function VoteCard({ vote, onOpen }) {
@@ -144,8 +143,8 @@ function Phase({ vote }) {
   if (isMainPhase) {
     return (
       <Flex>
-        <PhaseIcon vote={vote} />
         <Timer end={objectionPhaseStartDate} maxUnits={4} />
+        <span>Main</span>
       </Flex>
     )
   }
@@ -153,8 +152,8 @@ function Phase({ vote }) {
   if (isObjectionPhase) {
     return (
       <Flex>
-        <PhaseIcon vote={vote} />
         <Timer end={endDate} maxUnits={4} />
+        <span>Objections</span>
       </Flex>
     )
   }
@@ -166,6 +165,6 @@ export default VoteCard
 
 const Flex = styled.div`
   display: flex;
-  justify-content: flex-start;
+  justify-content: space-between;
   align-items: center;
 `
