@@ -7,6 +7,8 @@ require('hardhat-gas-reporter')
 require('solidity-coverage')
 require('hardhat-abi-exporter');
 
+require("./ipfsPub.task")
+
 const fs = require('fs')
 const path = require('path')
 
