@@ -3,7 +3,7 @@ const { readJson, pathExists } = require("@aragon/hardhat-aragon/dist/utils/fsUt
 const { generateArtifacts, writeArtifacts } = require("@aragon/hardhat-aragon/dist/utils/artifact");
 const { uploadDirToIpfs, assertIpfsApiIsAvailable } = require("@aragon/hardhat-aragon/dist/utils/ipfs");
 const execa = require("execa");
-const { toContentUri } = require("./scripts/helpers/toContentURI");
+const { toContentUri } = require("./scripts/helpers/toContentUri");
 
 if (typeof task === "function") {
   task("ipfspub", "Upload aragon app to IPFS")
