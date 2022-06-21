@@ -3,6 +3,7 @@ const { readJson, pathExists } = require("@aragon/hardhat-aragon/dist/utils/fsUt
 const { generateArtifacts, writeArtifacts } = require("@aragon/hardhat-aragon/dist/utils/artifact");
 const { uploadDirToIpfs, assertIpfsApiIsAvailable } = require("@aragon/hardhat-aragon/dist/utils/ipfs");
 const execa = require("execa");
+const { toContentUri } = require("./scripts/helpers/toContentURI");
 
 if (typeof task === "function") {
   task("ipfspub", "Upload aragon app to IPFS")
@@ -43,6 +44,7 @@ if (typeof task === "function") {
       const contentHash = await uploadDirToIpfs({ dirPath, ipfs });
 
       console.log(`Release assets uploaded to IPFS: ${contentHash}`);
+      console.log(`Content URI: ${toContentUri("ipfs", contentHash)}`);
     });
 }
 
