@@ -29,8 +29,8 @@
     "abi:extract": "hardhat export-abi"
   },
   "dependencies": {
-    "@aragon/minime": "1.0.0",
-    "@aragon/os": "4.4.0"
+    "@aragon/os": "4.4.0",
+    "@aragon/apps-shared-minime": "1.0.2"
   },
   "devDependencies": {
     "patch-package": "^6.4.7",

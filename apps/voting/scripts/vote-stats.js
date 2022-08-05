@@ -13,7 +13,7 @@ as the default connection to mainnet uses an unauthenticated Infura endpoint (th
 const fs = require('fs')
 
 const Voting = artifacts.require('Voting')
-const MiniMeToken = artifacts.require('MiniMeToken')
+const MiniMeToken = artifacts.require('@aragon/apps-shared-minime/contracts/MiniMeToken.sol:MiniMeToken')
 
 const appAddress = process.env.APP_ADDRESS || '0xcfee4d3078f74197ce77120dbfe6d35f443cab1c'
 const voteId = process.env.VOTE_ID || '0'

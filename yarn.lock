@@ -2,6 +2,11 @@
 # yarn lockfile v1
 
 
+"@aragon/apps-shared-minime@1.0.2":
+  version "1.0.2"
+  resolved "https://registry.yarnpkg.com/@aragon/apps-shared-minime/-/apps-shared-minime-1.0.2.tgz#1388602be2b296de51e6c3712c80d669c1d2191e"
+  integrity sha512-HqvnjU4sF2swvOK3616cvuSs2sofegWd7qqT5iF0YTf9v0w/cAWoj7ZZK3TMVdsQv07HNvQjqucTGa3/qMzblA==
+
 "@aragon/contract-helpers-test@0.1.0", "@aragon/contract-helpers-test@^0.1.0":
   version "0.1.0"
   resolved "https://registry.yarnpkg.com/@aragon/contract-helpers-test/-/contract-helpers-test-0.1.0.tgz#5c5f09739a0b33ab66843bc4849cb2b997d88af0"

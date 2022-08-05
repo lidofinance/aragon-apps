@@ -6,7 +6,7 @@ const { assert } = require('chai')
 
 const Voting = artifacts.require('VotingMock')
 
-const MiniMeToken = artifacts.require('MiniMeToken')
+const MiniMeToken = artifacts.require('@aragon/apps-shared-minime/contracts/MiniMeToken.sol:MiniMeToken')
 const ExecutionTarget = artifacts.require('ExecutionTarget')
 
 const createdVoteId = receipt => getEventArgument(receipt, 'StartVote', 'voteId')
