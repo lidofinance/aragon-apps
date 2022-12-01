@@ -1,0 +1,29 @@
+[
+  {
+    "artifactPath": "apps/agent/artifacts/Agent.json",
+    "sourcePath": "apps/agent/contracts/Agent.sol",
+    "name": "Agent",
+    "address": "0x3A93C17FC82CC33420d1809dDA9Fb715cc89dd37",
+    "txHash": "0x20ca936d77abb19e68654b984c32f0022bff6949551fd1e127dca0845d4bf5bd"
+  },
+  {
+    "artifactPath": "apps/finance/artifacts/Finance.json",
+    "sourcePath": "apps/finance/contracts/Finance.sol",
+    "name": "Finance",
+    "address": "0x836835289A2E81B66AE5d95b7c8dBC0480dCf9da",
+    "txHash": "0x3866bca78b56a538fbea0d9b8932798646c9605aad540818f2bd53086f4bab09"
+  },
+  {
+    "artifactPath": "apps/token-manager/artifacts/TokenManager.json",
+    "sourcePath": "apps/token-manager/contracts/TokenManager.sol",
+    "name": "TokenManager",
+    "address": "0xde3A93028F2283cc28756B3674BD657eaFB992f4",
+    "txHash": "0x774688b324fd1f1868ac969d89c4b59707e4ae0cf837781ef78993d21b3a984e"
+  },
+  {
+    "artifactPath": "apps/voting/artifacts/contracts/Voting.sol/Voting.json",
+    "sourcePath": "apps/voting/contracts/Voting.sol",
+    "name": "Voting",
+    "address": "0x72fb5253AD16307B9E773d2A78CaC58E309d5Ba4"
+  }
+]
