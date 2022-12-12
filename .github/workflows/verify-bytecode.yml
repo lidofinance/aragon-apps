@@ -1,0 +1,34 @@
+---
+name: Verify deployed contracts' bytecode
+
+on:
+  pull_request:
+    branches:
+      - "master"
+
+jobs:
+  assert-bytecode:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          persist-credentials: false
+
+      - name: Install nodejs
+        uses: actions/setup-node@v3
+        with:
+          node-version: 14
+
+      - name: Install dependencies
+        run: yarn
+
+      - name: Compile contracts
+        run: >
+          jq -r '.scripts?.compile | strings | input_filename' apps/*/package.json |
+          xargs dirname | xargs -I% sh -c "echo % && cd % && yarn compile"
+
+      - name: Verify bytecode of contracts
+        uses: lidofinance/action-verify-bytecode@master
+        with:
+          file: artifacts.json
