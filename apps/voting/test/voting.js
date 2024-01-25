@@ -12,7 +12,7 @@ const ExecutionTarget = artifacts.require('ExecutionTarget')
 
 const createdVoteId = receipt => getEventArgument(receipt, 'StartVote', 'voteId')
 
-const VOTER_STATE = ['ABSENT', 'YEA', 'NAY'].reduce((state, key, index) => {
+const VOTER_STATE = ['ABSENT', 'YEA', 'NAY', 'MANAGER_YEA', 'MANAGER_NAY'].reduce((state, key, index) => {
   state[key] = index;
   return state;
 }, {})
@@ -452,7 +452,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, m
         const voterState = await voting.getVoterState(voteId, holder29)
 
         assertBn(state[7], bigExp(29, decimals), 'nay vote should have been counted')
-        assert.equal(voterState, VOTER_STATE.NAY, 'holder29 should have nay voter status')
+        assert.equal(voterState, VOTER_STATE.MANAGER_NAY, 'holder29 should have manager nay voter status')
       })
 
       it('manager can vote for both holders', async () => {
@@ -466,10 +466,40 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, m
         assertBn(state[7], bigExp(80, decimals), 'nay vote should have been counted')
 
         const voterState29 = await voting.getVoterState(voteId, holder29)
-        assert.equal(voterState29, VOTER_STATE.NAY, 'holder29 should have nay voter status')
+        assert.equal(voterState29, VOTER_STATE.MANAGER_NAY, 'holder29 should have manager nay voter status')
 
         const voterState51 = await voting.getVoterState(voteId, holder51)
-        assert.equal(voterState51, VOTER_STATE.NAY, 'holder51 should have nay voter status')
+        assert.equal(voterState51, VOTER_STATE.MANAGER_NAY, 'holder51 should have manager nay voter status')
+      })
+
+      it(`holder can overwrite manager's vote`, async () => {
+        await voting.voteFor(voteId, false, holder29, {from: manager1})
+
+        const tx = await voting.vote(voteId, true, true, {from: holder29})
+        assertEvent(tx, 'CastVote', {expectedArgs: {voteId: voteId, voter: holder29, supports: true}})
+        assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
+        assertAmountOfEvents(tx, 'CastObjection', {expectedAmount: 0})
+
+        const state = await voting.getVote(voteId)
+        assertBn(state[6], bigExp(29, decimals), 'yea vote should have been counted')
+        assertBn(state[7], bigExp(0, decimals), 'nay vote should have been reset')
+
+        const voterState29 = await voting.getVoterState(voteId, holder29)
+        assert.equal(voterState29, VOTER_STATE.YEA, 'holder29 should have yea voter status')
+      })
+
+      it(`manager can't overwrite holder's vote`, async () => {
+        await voting.voteFor(voteId, false, holder29, {from: manager1})
+        await voting.vote(voteId, true, true, {from: holder29})
+
+        await assertRevert(
+            voting.voteFor(
+                voteId,
+                false,
+                holder29,
+                { from: manager1 }
+            ), ERRORS.VOTING_MGR_CANT_OVERWRITE
+        )
       })
     })
   }

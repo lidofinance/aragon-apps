@@ -44,8 +44,9 @@ contract Voting is IForwarder, AragonApp {
     string private constant ERROR_SELF_MANAGER = "VOTING_SELF_MANAGER";
     string private constant ERROR_MANAGER_SAME_AS_PREV = "VOTING_MANAGER_SAME_AS_PREV";
     string private constant ERROR_MAX_MANAGED_VOTERS_REACHED = "VOTING_MAX_MANAGED_VOTERS_REACHED";
+    string private constant ERROR_MANAGER_CANNOT_OVERWRITE_VOTE = "VOTING_MGR_CANT_OVERWRITE";
 
-    enum VoterState { Absent, Yea, Nay }
+    enum VoterState { Absent, Yea, Nay, ManagerYea, ManagerNay }
 
     enum VotePhase { Main, Objection, Closed }
 
@@ -290,14 +291,14 @@ contract Voting is IForwarder, AragonApp {
     function vote(uint256 _voteId, bool _supports, bool _executesIfDecided_deprecated) external voteExists(_voteId) {
         require(_canVote(_voteId, msg.sender), ERROR_CAN_NOT_VOTE);
         require(!_supports || _getVotePhase(votes[_voteId]) == VotePhase.Main, ERROR_CAN_NOT_VOTE);
-        _vote(_voteId, _supports, msg.sender);
+        _vote(_voteId, _supports, msg.sender, false);
     }
 
     function voteFor(uint256 _voteId, bool _supports, address _voteFor) external voteExists(_voteId) {
         require(_canVoteFor(msg.sender, _voteFor), ERROR_CAN_NOT_VOTE_FOR);
         require(_canVote(_voteId, _voteFor), ERROR_CAN_NOT_VOTE);
         require(!_supports || _getVotePhase(votes[_voteId]) == VotePhase.Main, ERROR_CAN_NOT_VOTE);
-        _vote(_voteId, _supports, _voteFor);
+        _vote(_voteId, _supports, _voteFor, true);
     }
 
     /**
@@ -311,7 +312,7 @@ contract Voting is IForwarder, AragonApp {
             address _voteFor = _voteForList[i];
             require(_canVoteFor(msg.sender, _voteFor), ERROR_CAN_NOT_VOTE_FOR);
             require(_canVote(_voteId, _voteFor), ERROR_CAN_NOT_VOTE);
-            _vote(_voteId, _supports, _voteFor);
+            _vote(_voteId, _supports, _voteFor, true);
         }
     }
 
@@ -475,7 +476,7 @@ contract Voting is IForwarder, AragonApp {
         emit StartVote(voteId, msg.sender, _metadata);
 
         if (_castVote && _canVote(voteId, msg.sender)) {
-            _vote(voteId, true, msg.sender);
+            _vote(voteId, true, msg.sender, false);
         }
     }
 
@@ -483,28 +484,34 @@ contract Voting is IForwarder, AragonApp {
     * @dev Internal function to cast a vote or object to.
       @dev It assumes that voter can support or object to the vote
     */
-    function _vote(uint256 _voteId, bool _supports, address _voter) internal {
+    function _vote(uint256 _voteId, bool _supports, address _voter, bool _isManager) internal {
         Vote storage vote_ = votes[_voteId];
 
         // This could re-enter, though we can assume the governance token is not malicious
         uint256 voterStake = token.balanceOfAt(_voter, vote_.snapshotBlock);
         VoterState state = vote_.voters[_voter];
 
+        // Voting manager can't overwrite holder vote
+        if (_isManager && (state == VoterState.Yea || state == VoterState.Nay)) {
+            revert(ERROR_MANAGER_CANNOT_OVERWRITE_VOTE);
+        }
+
         // If voter had previously voted, decrease count
-        if (state == VoterState.Yea) {
+        if (state == VoterState.Yea || state == VoterState.ManagerYea) {
             vote_.yea = vote_.yea.sub(voterStake);
-        } else if (state == VoterState.Nay) {
+        } else if (state == VoterState.Nay || state == VoterState.ManagerNay) {
             vote_.nay = vote_.nay.sub(voterStake);
         }
 
         if (_supports) {
             vote_.yea = vote_.yea.add(voterStake);
-            vote_.voters[_voter] = VoterState.Yea;
+            vote_.voters[_voter] = _isManager ? VoterState.ManagerYea : VoterState.Yea;
         } else {
             vote_.nay = vote_.nay.add(voterStake);
-            vote_.voters[_voter] = VoterState.Nay;
+            vote_.voters[_voter] = _isManager ? VoterState.ManagerNay : VoterState.Nay;
         }
 
+        // TODO: consider to add an event indicates that manager have voted
         emit CastVote(_voteId, _voter, _supports, voterStake);
 
         if (_getVotePhase(vote_) == VotePhase.Objection) {
