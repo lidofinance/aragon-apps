@@ -1,4 +1,5 @@
 const ERRORS = require('./helpers/errors')
+const assertArraysEqualAsSets = require('./helpers/assertArrayAsSets')
 const { assertBn, assertRevert, assertAmountOfEvents, assertEvent } = require('@aragon/contract-helpers-test/src/asserts')
 const { pct16, bn, bigExp, getEventArgument, ZERO_ADDRESS } = require('@aragon/contract-helpers-test')
 const { newDao, installNewApp, encodeCallScript, ANY_ENTITY, EMPTY_CALLS_SCRIPT } = require('@aragon/contract-helpers-test/src/aragon-os')
@@ -17,7 +18,7 @@ const VOTER_STATE = ['ABSENT', 'YEA', 'NAY'].reduce((state, key, index) => {
 }, {})
 
 
-contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, nonHolder]) => {
+contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, manager1, manager2, nonHolder]) => {
   let votingBase, voting, token, executionTarget, aclP
   let CREATE_VOTES_ROLE, MODIFY_SUPPORT_ROLE, MODIFY_QUORUM_ROLE, UNSAFELY_MODIFY_VOTE_TIME_ROLE
 
@@ -412,6 +413,65 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
         })
       })
     })
+
+    context('voting for', () => {
+      let script, voteId, creator, metadata
+
+      const neededSupport = pct16(50)
+      const minimumAcceptanceQuorum = pct16(20)
+
+      beforeEach(async () => {
+        token = await MiniMeToken.new(ZERO_ADDRESS, ZERO_ADDRESS, 0, 'n', decimals, 'n', true) // empty parameters minime
+
+        await token.generateTokens(holder20, bigExp(20, decimals))
+        await token.generateTokens(holder29, bigExp(29, decimals))
+        await token.generateTokens(holder51, bigExp(51, decimals))
+        await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, votingDuration, 0)
+        await voting.setVotingManager(manager1, {from: holder29})
+        await voting.setVotingManager(manager1, {from: holder51})
+
+        executionTarget = await ExecutionTarget.new()
+
+        const action = {to: executionTarget.address, calldata: executionTarget.contract.methods.execute().encodeABI()}
+        script = encodeCallScript([action, action])
+
+        const receipt = await voting.methods['newVote(bytes,string,bool,bool)'](script, 'metadata', false, false, {from: holder51});
+        voteId = getEventArgument(receipt, 'StartVote', 'voteId')
+        creator = getEventArgument(receipt, 'StartVote', 'creator')
+        metadata = getEventArgument(receipt, 'StartVote', 'metadata')
+      })
+
+
+      it('manager can vote for holder', async () => {
+        const tx = await voting.voteFor(voteId, false, holder29, {from: manager1})
+        assertEvent(tx, 'CastVote', {expectedArgs: {voteId: voteId, voter: holder29, supports: false}})
+        assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
+        assertAmountOfEvents(tx, 'CastObjection', {expectedAmount: 0})
+
+        const state = await voting.getVote(voteId)
+        const voterState = await voting.getVoterState(voteId, holder29)
+
+        assertBn(state[7], bigExp(29, decimals), 'nay vote should have been counted')
+        assert.equal(voterState, VOTER_STATE.NAY, 'holder29 should have nay voter status')
+      })
+
+      it('manager can vote for both holders', async () => {
+        const tx = await voting.voteForMultiple(voteId, false, [holder29, holder51], {from: manager1})
+        assertEvent(tx, 'CastVote', {expectedArgs: {voteId: voteId, voter: holder29, supports: false}})
+        assertEvent(tx, 'CastVote', {index: 1, expectedArgs: {voteId: voteId, voter: holder51, supports: false}})
+        assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 2})
+        assertAmountOfEvents(tx, 'CastObjection', {expectedAmount: 0})
+
+        const state = await voting.getVote(voteId)
+        assertBn(state[7], bigExp(80, decimals), 'nay vote should have been counted')
+
+        const voterState29 = await voting.getVoterState(voteId, holder29)
+        assert.equal(voterState29, VOTER_STATE.NAY, 'holder29 should have nay voter status')
+
+        const voterState51 = await voting.getVoterState(voteId, holder51)
+        assert.equal(voterState51, VOTER_STATE.NAY, 'holder51 should have nay voter status')
+      })
+    })
   }
 
   context('wrong initializations', () => {
@@ -795,6 +855,60 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
 
       assert.isFalse(voteState[0], 'vote should be closed after time increasing')
       assert.isTrue(voteState[1], 'vite should be executed')
+    })
+  })
+
+  context('voting manager', () => {
+    const neededSupport = pct16(50)
+    const minimumAcceptanceQuorum = pct16(20)
+    const decimals = 18
+
+    beforeEach(async () => {
+      token = await MiniMeToken.new(ZERO_ADDRESS, ZERO_ADDRESS, 0, 'n', decimals, 'n', true) // empty parameters minime
+
+      await token.generateTokens(holder20, bigExp(20, decimals))
+      await token.generateTokens(holder29, bigExp(29, decimals))
+      await token.generateTokens(holder51, bigExp(51, decimals))
+      await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, votingDuration, 0)
+
+      executionTarget = await ExecutionTarget.new()
+    })
+
+    it('holder can set voting manager', async () => {
+      const tx = await voting.setVotingManager(manager1, {from: holder29})
+      assertEvent(tx, 'ManagerSet', {
+        expectedArgs: {holder: holder29, previousVotingManager: ZERO_ADDRESS, newVotingManager: manager1}
+      })
+      assertAmountOfEvents(tx, 'ManagerSet', {expectedAmount: 1})
+
+      const manager = await voting.getVotingManager(holder29)
+      assert.equal(manager, manager1, 'holder29 should have manager1 as a voting manager')
+
+      const managedHolders = await voting.getManagedVoters(manager1)
+      assertArraysEqualAsSets(managedHolders, [holder29], 'manager1 should manage holder29')
+    })
+
+    it('holder can remove voting managers', async () => {
+      await voting.setVotingManager(manager1, {from: holder29})
+
+      const tx = await voting.removeVotingManager({from: holder29})
+      assertEvent(tx, 'ManagerSet', {
+        expectedArgs: {holder: holder29, previousVotingManager: manager1, newVotingManager: ZERO_ADDRESS}
+      })
+      assertAmountOfEvents(tx, 'ManagerSet', {expectedAmount: 1})
+    })
+
+    it('manager can manage several holders', async () => {
+      await voting.setVotingManager(manager1, {from: holder29})
+
+      const tx = await voting.setVotingManager(manager1, {from: holder51})
+      assertEvent(tx, 'ManagerSet', {
+        expectedArgs: {holder: holder51, previousVotingManager: ZERO_ADDRESS, newVotingManager: manager1}
+      })
+      assertAmountOfEvents(tx, 'ManagerSet', {expectedAmount: 1})
+
+      const managedHolders = await voting.getManagedVoters(manager1)
+      assertArraysEqualAsSets(managedHolders, [holder29, holder51], 'manager1 should manage holder29 and holder51')
     })
   })
 })

@@ -23,6 +23,7 @@ contract Voting is IForwarder, AragonApp {
     bytes32 public constant UNSAFELY_MODIFY_VOTE_TIME_ROLE = keccak256("UNSAFELY_MODIFY_VOTE_TIME_ROLE");
 
     uint64 public constant PCT_BASE = 10 ** 18; // 0% = 0; 1% = 10^16; 100% = 10^18
+    uint64 public constant MAX_HOLDERS_PER_MANAGER = 1024; // some reasonable number to mitigate unbound loop issue
 
     string private constant ERROR_NO_VOTE = "VOTING_NO_VOTE";
     string private constant ERROR_INIT_PCTS = "VOTING_INIT_PCTS";
@@ -37,6 +38,12 @@ contract Voting is IForwarder, AragonApp {
     string private constant ERROR_CHANGE_VOTE_TIME = "VOTING_VOTE_TIME_TOO_SMALL";
     string private constant ERROR_CHANGE_OBJECTION_TIME = "VOTING_OBJ_TIME_TOO_BIG";
     string private constant ERROR_INIT_OBJ_TIME_TOO_BIG = "VOTING_INIT_OBJ_TIME_TOO_BIG";
+    string private constant ERROR_CAN_NOT_VOTE_FOR = "VOTING_CAN_NOT_VOTE_FOR";
+    string private constant ERROR_ZERO_ADDRESS_PASSED = "VOTING_ZERO_ADDRESS_PASSED";
+    string private constant ERROR_MANAGER_NOT_SET = "VOTING_MANAGER_NOT_SET";
+    string private constant ERROR_SELF_MANAGER = "VOTING_SELF_MANAGER";
+    string private constant ERROR_MANAGER_SAME_AS_PREV = "VOTING_MANAGER_SAME_AS_PREV";
+    string private constant ERROR_MAX_MANAGED_VOTERS_REACHED = "VOTING_MAX_MANAGED_VOTERS_REACHED";
 
     enum VoterState { Absent, Yea, Nay }
 
@@ -55,6 +62,10 @@ contract Voting is IForwarder, AragonApp {
         mapping (address => VoterState) voters;
     }
 
+    struct ManagedAddressList {
+        address[] addresses;
+    }
+
     MiniMeToken public token;
     uint64 public supportRequiredPct;
     uint64 public minAcceptQuorumPct;
@@ -65,6 +76,11 @@ contract Voting is IForwarder, AragonApp {
     uint256 public votesLength;
     uint64 public objectionPhaseTime;
 
+    // manager -> [managed holder address]
+    mapping(address => ManagedAddressList) private managedHolders;
+    // holder -> manager
+    mapping(address => address) private managers;
+
     event StartVote(uint256 indexed voteId, address indexed creator, string metadata);
     event CastVote(uint256 indexed voteId, address indexed voter, bool supports, uint256 stake);
     event CastObjection(uint256 indexed voteId, address indexed voter, uint256 stake);
@@ -73,6 +89,7 @@ contract Voting is IForwarder, AragonApp {
     event ChangeMinQuorum(uint64 minAcceptQuorumPct);
     event ChangeVoteTime(uint64 voteTime);
     event ChangeObjectionPhaseTime(uint64 objectionPhaseTime);
+    event ManagerSet(address indexed holder, address indexed previousVotingManager, address indexed newVotingManager);
 
     modifier voteExists(uint256 _voteId) {
         require(_voteId < votesLength, ERROR_NO_VOTE);
@@ -103,6 +120,79 @@ contract Voting is IForwarder, AragonApp {
         voteTime = _voteTime;
         objectionPhaseTime = _objectionPhaseTime;
     }
+
+    /**
+     * TODO: Calculate gas spending and add hint for more efficient look up in the array if needed
+     */
+    function setVotingManager(address _manager) public {
+        require(_manager != address(0), ERROR_ZERO_ADDRESS_PASSED);
+
+        address msgSender = msg.sender;
+        require(_manager != msg.sender, ERROR_SELF_MANAGER);
+
+        address prevManager = managers[msgSender];
+        require(_manager != prevManager, ERROR_MANAGER_SAME_AS_PREV);
+
+        if (prevManager != address(0)) {
+            _removeManagedAddressFor(prevManager, msgSender);
+        }
+
+        _addManagedAddressFor(_manager, msgSender);
+        managers[msgSender] = _manager;
+
+        emit ManagerSet(msgSender, prevManager, _manager);
+    }
+
+    /**
+     * TODO: Calculate gas spending and add hint for more efficient look up in the array if needed
+     */
+    function removeVotingManager() public {
+        address msgSender = msg.sender;
+        address prevManager = managers[msgSender];
+        require(prevManager != address(0), ERROR_MANAGER_NOT_SET);
+
+        _removeManagedAddressFor(prevManager, msgSender);
+        managers[msgSender] = address(0);
+
+        emit ManagerSet(msgSender, prevManager, address(0));
+    }
+
+    function _addManagedAddressFor(address _manager, address _holder) public {
+        require(_manager != address(0), ERROR_ZERO_ADDRESS_PASSED);
+        require(_holder != address(0), ERROR_ZERO_ADDRESS_PASSED);
+
+        uint256 length = managedHolders[_manager].addresses.length;
+        require(length < MAX_HOLDERS_PER_MANAGER, ERROR_MAX_MANAGED_VOTERS_REACHED);
+
+        managedHolders[_manager].addresses.push(_holder);
+    }
+
+    function _removeManagedAddressFor(address _manager, address _holder) public {
+        require(_manager != address(0), ERROR_ZERO_ADDRESS_PASSED);
+        require(_holder != address(0), ERROR_ZERO_ADDRESS_PASSED);
+
+        uint256 length = managedHolders[_manager].addresses.length;
+        for (uint256 i = 0; i < length; i++) {
+            if (managedHolders[_manager].addresses[i] == _holder) {
+                managedHolders[_manager].addresses[i] = managedHolders[_manager].addresses[length - 1];
+                delete managedHolders[_manager].addresses[length - 1];
+                managedHolders[_manager].addresses.length--;
+                break;
+            }
+        }
+    }
+
+    function getManagedVoters(address _manager) public view returns (address[] memory) {
+        require(_manager != address(0), ERROR_ZERO_ADDRESS_PASSED);
+        return managedHolders[_manager].addresses;
+    }
+
+    function getVotingManager(address _holder) public view returns (address) {
+        require(_holder != address(0), ERROR_ZERO_ADDRESS_PASSED);
+        return managers[_holder];
+    }
+
+    // TODO: add getter allowing easily calculate compound total voting power for set of managed holders for particular voteId
 
     /**
     * @notice Change required support to `@formatPct(_supportRequiredPct)`%
@@ -201,6 +291,28 @@ contract Voting is IForwarder, AragonApp {
         require(_canVote(_voteId, msg.sender), ERROR_CAN_NOT_VOTE);
         require(!_supports || _getVotePhase(votes[_voteId]) == VotePhase.Main, ERROR_CAN_NOT_VOTE);
         _vote(_voteId, _supports, msg.sender);
+    }
+
+    function voteFor(uint256 _voteId, bool _supports, address _voteFor) external voteExists(_voteId) {
+        require(_canVoteFor(msg.sender, _voteFor), ERROR_CAN_NOT_VOTE_FOR);
+        require(_canVote(_voteId, _voteFor), ERROR_CAN_NOT_VOTE);
+        require(!_supports || _getVotePhase(votes[_voteId]) == VotePhase.Main, ERROR_CAN_NOT_VOTE);
+        _vote(_voteId, _supports, _voteFor);
+    }
+
+    /**
+     * TODO: Update the voteForMultiple function to allow voting with the entire voting power
+     * of both self-managed address and managed addresses / write voteWithFullPower function
+     */
+    function voteForMultiple(uint256 _voteId, bool _supports, address[] _voteForList) external voteExists(_voteId) {
+        require(!_supports || _getVotePhase(votes[_voteId]) == VotePhase.Main, ERROR_CAN_NOT_VOTE);
+
+        for (uint i = 0; i < _voteForList.length; i++) {
+            address _voteFor = _voteForList[i];
+            require(_canVoteFor(msg.sender, _voteFor), ERROR_CAN_NOT_VOTE_FOR);
+            require(_canVote(_voteId, _voteFor), ERROR_CAN_NOT_VOTE);
+            _vote(_voteId, _supports, _voteFor);
+        }
     }
 
     /**
@@ -459,6 +571,12 @@ contract Voting is IForwarder, AragonApp {
     function _canVote(uint256 _voteId, address _voter) internal view returns (bool) {
         Vote storage vote_ = votes[_voteId];
         return _isVoteOpen(vote_) && token.balanceOfAt(_voter, vote_.snapshotBlock) > 0;
+    }
+
+    function _canVoteFor(address _manager, address _voter) internal view returns (bool) {
+        require(_manager != address(0), ERROR_ZERO_ADDRESS_PASSED);
+        require(_voter != address(0), ERROR_ZERO_ADDRESS_PASSED);
+        return managers[_voter] == _manager;
     }
 
     /**
