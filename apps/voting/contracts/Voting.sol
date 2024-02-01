@@ -45,6 +45,7 @@ contract Voting is IForwarder, AragonApp {
     string private constant ERROR_DELEGATE_SAME_AS_PREV = "VOTING_DELEGATE_SAME_AS_PREV";
     string private constant ERROR_MAX_DELEGATED_VOTERS_REACHED = "VOTING_MAX_DELEGATED_VOTERS_REACHED";
     string private constant ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE = "VOTING_MGR_CANT_OVERWRITE";
+    string private constant ERROR_CAN_NOT_VOTE_WRONG_PHASE = "VOTING_CAN_NOT_VOTE_WRONG_PHASE";
 
     enum VoterState { Absent, Yea, Nay, DelegateYea, DelegateNay }
 
@@ -326,14 +327,14 @@ contract Voting is IForwarder, AragonApp {
     */
     function vote(uint256 _voteId, bool _supports, bool _executesIfDecided_deprecated) external voteExists(_voteId) {
         require(_canVote(_voteId, msg.sender), ERROR_CAN_NOT_VOTE);
-        require(!_supports || _getVotePhase(votes[_voteId]) == VotePhase.Main, ERROR_CAN_NOT_VOTE);
+        require(_canCastYeaVote(_voteId, _supports), ERROR_CAN_NOT_VOTE_WRONG_PHASE);
         _vote(_voteId, _supports, msg.sender, false);
     }
 
     function voteFor(uint256 _voteId, bool _supports, address _voteFor) external voteExists(_voteId) {
         require(_canVoteFor(msg.sender, _voteFor), ERROR_CAN_NOT_VOTE_FOR);
         require(_canVote(_voteId, _voteFor), ERROR_CAN_NOT_VOTE);
-        require(!_supports || _getVotePhase(votes[_voteId]) == VotePhase.Main, ERROR_CAN_NOT_VOTE);
+        require(_canCastYeaVote(_voteId, _supports), ERROR_CAN_NOT_VOTE_WRONG_PHASE);
         _vote(_voteId, _supports, _voteFor, true);
     }
 
@@ -342,7 +343,7 @@ contract Voting is IForwarder, AragonApp {
      * of both self-delegated address and delegated addresses / write voteWithFullPower function
      */
     function voteForMultiple(uint256 _voteId, bool _supports, address[] _voteForList) external voteExists(_voteId) {
-        require(!_supports || _getVotePhase(votes[_voteId]) == VotePhase.Main, ERROR_CAN_NOT_VOTE);
+        require(_canCastYeaVote(_voteId, _supports), ERROR_CAN_NOT_VOTE_WRONG_PHASE);
 
         for (uint i = 0; i < _voteForList.length; i++) {
             address _voteFor = _voteForList[i];
@@ -620,6 +621,10 @@ contract Voting is IForwarder, AragonApp {
         require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
         require(_voter != address(0), ERROR_ZERO_ADDRESS_PASSED);
         return delegates[_voter] == _delegate;
+    }
+
+    function _canCastYeaVote(uint256 _voteId, bool _supports) internal view returns (bool) {
+        return !_supports || _getVotePhase(votes[_voteId]) == VotePhase.Main;
     }
 
     /**
