@@ -158,7 +158,7 @@ contract Voting is IForwarder, AragonApp {
         emit ManagerSet(msgSender, prevManager, address(0));
     }
 
-    function _addManagedAddressFor(address _manager, address _holder) public {
+    function _addManagedAddressFor(address _manager, address _holder) internal {
         require(_manager != address(0), ERROR_ZERO_ADDRESS_PASSED);
         require(_holder != address(0), ERROR_ZERO_ADDRESS_PASSED);
 
@@ -168,7 +168,7 @@ contract Voting is IForwarder, AragonApp {
         managedHolders[_manager].addresses.push(_holder);
     }
 
-    function _removeManagedAddressFor(address _manager, address _holder) public {
+    function _removeManagedAddressFor(address _manager, address _holder) internal {
         require(_manager != address(0), ERROR_ZERO_ADDRESS_PASSED);
         require(_holder != address(0), ERROR_ZERO_ADDRESS_PASSED);
 
