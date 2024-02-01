@@ -85,8 +85,8 @@ contract Voting is IForwarder, AragonApp {
     mapping(address => address) private delegates;
 
     event StartVote(uint256 indexed voteId, address indexed creator, string metadata);
-    event CastVote(uint256 indexed voteId, address indexed voter, bool supports, uint256 stake);
-    event CastObjection(uint256 indexed voteId, address indexed voter, uint256 stake);
+    event CastVote(uint256 indexed voteId, address indexed voter, bool supports, uint256 stake, bool isDelegate);
+    event CastObjection(uint256 indexed voteId, address indexed voter, uint256 stake, bool isDelegate);
     event ExecuteVote(uint256 indexed voteId);
     event ChangeSupportRequired(uint64 supportRequiredPct);
     event ChangeMinQuorum(uint64 minAcceptQuorumPct);
@@ -576,11 +576,10 @@ contract Voting is IForwarder, AragonApp {
             vote_.voters[_voter] = _isDelegate ? VoterState.DelegateNay : VoterState.Nay;
         }
 
-        // TODO: consider to add an event indicates that delegate have voted
-        emit CastVote(_voteId, _voter, _supports, voterStake);
+        emit CastVote(_voteId, _voter, _supports, voterStake, _isDelegate);
 
         if (_getVotePhase(vote_) == VotePhase.Objection) {
-            emit CastObjection(_voteId, _voter, voterStake);
+            emit CastObjection(_voteId, _voter, voterStake, _isDelegate);
         }
     }
 
