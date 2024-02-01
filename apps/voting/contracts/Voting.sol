@@ -193,7 +193,43 @@ contract Voting is IForwarder, AragonApp {
         return delegates[_voter];
     }
 
-    // TODO: add getter allowing easily calculate compound total voting power for set of delegated voters for particular voteId
+    function _isActiveDelegateVoter(
+        uint256 _voteId,
+        address _delegate,
+        address _voter
+    ) internal view voteExists(_voteId) returns (bool) {
+        Vote storage vote_ = votes[_voteId];
+        VoterState state = vote_.voters[_delegate];
+        uint256 votingPower = token.balanceOfAt(_voter, vote_.snapshotBlock);
+        return votingPower > 0 && state == VoterState.Absent;
+    }
+
+    function getDelegateTotalVotingPower(
+        uint256 _voteId,
+        address _delegate
+    ) public view voteExists(_voteId) returns (uint256) {
+        require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
+        Vote storage vote_ = votes[_voteId];
+
+        require(_isVoteOpen(vote_), ERROR_CAN_NOT_VOTE);
+
+        uint256 totalVotingPower = _isActiveDelegateVoter(_voteId, _delegate, _delegate)
+            ? token.balanceOfAt(_delegate, vote_.snapshotBlock)
+            : 0;
+
+        address[] memory delegatedVoters_ = delegatedVoters[_delegate]
+            .addresses;
+        for (uint256 i = 0; i < delegatedVoters_.length; i++) {
+            address delegatedVoter = delegatedVoters_[i];
+
+            if (_isActiveDelegateVoter(_voteId, _delegate, delegatedVoter)) {
+                totalVotingPower = totalVotingPower.add(
+                    token.balanceOfAt(delegatedVoter, vote_.snapshotBlock)
+                );
+            }
+        }
+        return totalVotingPower;
+    }
 
     /**
     * @notice Change required support to `@formatPct(_supportRequiredPct)`%
