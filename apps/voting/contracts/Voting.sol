@@ -46,6 +46,7 @@ contract Voting is IForwarder, AragonApp {
     string private constant ERROR_MAX_DELEGATED_VOTERS_REACHED = "VOTING_MAX_DELEGATED_VOTERS_REACHED";
     string private constant ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE = "VOTING_MGR_CANT_OVERWRITE";
     string private constant ERROR_CAN_NOT_VOTE_WRONG_PHASE = "VOTING_CAN_NOT_VOTE_WRONG_PHASE";
+    string private constant ERROR_CAN_NOT_VOTE_FOR_MULTIPLE = "VOTING_CAN_NOT_VOTE_FOR_MULTIPLE";
 
     enum VoterState { Absent, Yea, Nay, DelegateYea, DelegateNay }
 
@@ -92,6 +93,7 @@ contract Voting is IForwarder, AragonApp {
     event ChangeVoteTime(uint64 voteTime);
     event ChangeObjectionPhaseTime(uint64 objectionPhaseTime);
     event DelegateSet(address indexed voter, address indexed previousDelegate, address indexed newDelegate);
+    event FailedToVoteForMultiple(uint256 indexed voteId, address indexed manager, address[] failedVoters);
 
     modifier voteExists(uint256 _voteId) {
         require(_voteId < votesLength, ERROR_NO_VOTE);
@@ -194,15 +196,14 @@ contract Voting is IForwarder, AragonApp {
         return delegates[_voter];
     }
 
-    function _isActiveDelegateVoter(
+    function _isActiveDelegatedVoter(
         uint256 _voteId,
-        address _delegate,
         address _voter
-    ) internal view voteExists(_voteId) returns (bool) {
+    ) internal view returns (bool) {
         Vote storage vote_ = votes[_voteId];
-        VoterState state = vote_.voters[_delegate];
+        VoterState state = vote_.voters[_voter];
         uint256 votingPower = token.balanceOfAt(_voter, vote_.snapshotBlock);
-        return votingPower > 0 && state == VoterState.Absent;
+        return votingPower > 0 && state != VoterState.Yea && state != VoterState.Nay;
     }
 
     function getDelegateTotalVotingPower(
@@ -214,16 +215,14 @@ contract Voting is IForwarder, AragonApp {
 
         require(_isVoteOpen(vote_), ERROR_CAN_NOT_VOTE);
 
-        uint256 totalVotingPower = _isActiveDelegateVoter(_voteId, _delegate, _delegate)
-            ? token.balanceOfAt(_delegate, vote_.snapshotBlock)
-            : 0;
+        uint256 totalVotingPower = token.balanceOfAt(_delegate, vote_.snapshotBlock);
 
         address[] memory delegatedVoters_ = delegatedVoters[_delegate]
             .addresses;
         for (uint256 i = 0; i < delegatedVoters_.length; i++) {
             address delegatedVoter = delegatedVoters_[i];
 
-            if (_isActiveDelegateVoter(_voteId, _delegate, delegatedVoter)) {
+            if (_isActiveDelegatedVoter(_voteId, delegatedVoter)) {
                 totalVotingPower = totalVotingPower.add(
                     token.balanceOfAt(delegatedVoter, vote_.snapshotBlock)
                 );
@@ -335,22 +334,56 @@ contract Voting is IForwarder, AragonApp {
         require(_canVoteFor(msg.sender, _voteFor), ERROR_CAN_NOT_VOTE_FOR);
         require(_canVote(_voteId, _voteFor), ERROR_CAN_NOT_VOTE);
         require(_canCastYeaVote(_voteId, _supports), ERROR_CAN_NOT_VOTE_WRONG_PHASE);
+
+        Vote storage vote_ = votes[_voteId];
+        VoterState state = vote_.voters[_voteFor];
+        require(state != VoterState.Yea && state != VoterState.Nay, ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE);
+
         _vote(_voteId, _supports, _voteFor, true);
     }
 
-    /**
-     * TODO: Update the voteForMultiple function to allow voting with the entire voting power
-     * of both self-delegated address and delegated addresses / write voteWithFullPower function
-     */
-    function voteForMultiple(uint256 _voteId, bool _supports, address[] _voteForList) external voteExists(_voteId) {
-        require(_canCastYeaVote(_voteId, _supports), ERROR_CAN_NOT_VOTE_WRONG_PHASE);
+    function _voteForMultiple(uint256 _voteId, bool _supports, address[] _voteForList) internal {
+        address[] storage failedVoters;
+        address msgSender = msg.sender;
 
         for (uint i = 0; i < _voteForList.length; i++) {
-            address _voteFor = _voteForList[i];
-            require(_canVoteFor(msg.sender, _voteFor), ERROR_CAN_NOT_VOTE_FOR);
-            require(_canVote(_voteId, _voteFor), ERROR_CAN_NOT_VOTE);
-            _vote(_voteId, _supports, _voteFor, true);
+            address voteFor = _voteForList[i];
+            if (_canVoteFor(msgSender, voteFor) && _isActiveDelegatedVoter(_voteId, voteFor)) {
+                _vote(_voteId, _supports, voteFor, true);
+            } else {
+                failedVoters.push(voteFor);
+            }
         }
+
+        if (failedVoters.length == _voteForList.length) {
+            revert(ERROR_CAN_NOT_VOTE_FOR_MULTIPLE);
+        }
+
+        if (failedVoters.length > 0) {
+            emit FailedToVoteForMultiple(_voteId, msgSender, failedVoters);
+        }
+    }
+
+    function voteForMultiple(uint256 _voteId, bool _supports, address[] _voteForList) external voteExists(_voteId) {
+        require(_isVoteOpen(votes[_voteId]), ERROR_CAN_NOT_VOTE);
+        require(_canCastYeaVote(_voteId, _supports), ERROR_CAN_NOT_VOTE_WRONG_PHASE);
+
+        _voteForMultiple(_voteId, _supports, _voteForList);
+    }
+
+    function voteForMultipleWithFullPower(uint256 _voteId, bool _supports) external voteExists(_voteId) {
+        Vote storage vote_ = votes[_voteId];
+        require(_isVoteOpen(vote_), ERROR_CAN_NOT_VOTE);
+        require(_canCastYeaVote(_voteId, _supports), ERROR_CAN_NOT_VOTE_WRONG_PHASE);
+
+        address msgSender = msg.sender;
+        // Vote for self
+        if (token.balanceOfAt(msgSender, vote_.snapshotBlock) > 0) {
+            _vote(_voteId, _supports, msgSender, false);
+        }
+
+
+        _voteForMultiple(_voteId, _supports, delegatedVoters[msgSender].addresses);
     }
 
     /**
@@ -527,11 +560,6 @@ contract Voting is IForwarder, AragonApp {
         // This could re-enter, though we can assume the governance token is not malicious
         uint256 voterStake = token.balanceOfAt(_voter, vote_.snapshotBlock);
         VoterState state = vote_.voters[_voter];
-
-        // Delegate can't overwrite voter vote
-        if (_isDelegate && (state == VoterState.Yea || state == VoterState.Nay)) {
-            revert(ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE);
-        }
 
         // If voter had previously voted, decrease count
         if (state == VoterState.Yea || state == VoterState.DelegateYea) {
