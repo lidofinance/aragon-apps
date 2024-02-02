@@ -84,8 +84,8 @@ contract Voting is IForwarder, AragonApp {
     mapping(address => address) private delegates;
 
     event StartVote(uint256 indexed voteId, address indexed creator, string metadata);
-    event CastVote(uint256 indexed voteId, address indexed voter, bool supports, uint256 stake, bool isDelegate);
-    event CastObjection(uint256 indexed voteId, address indexed voter, uint256 stake, bool isDelegate);
+    event CastVote(uint256 indexed voteId, address indexed voter, bool supports, uint256 stake);
+    event CastObjection(uint256 indexed voteId, address indexed voter, uint256 stake);
     event ExecuteVote(uint256 indexed voteId);
     event ChangeSupportRequired(uint64 supportRequiredPct);
     event ChangeMinQuorum(uint64 minAcceptQuorumPct);
@@ -93,6 +93,7 @@ contract Voting is IForwarder, AragonApp {
     event ChangeObjectionPhaseTime(uint64 objectionPhaseTime);
     event DelegateSet(address indexed voter, address indexed previousDelegate, address indexed newDelegate);
     event VoteForMultipleSkippedFor(uint256 indexed voteId, address indexed delegate, address indexed skippedVoter, bool supports);
+    event CastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, address indexed voter, bool supports, uint256 stake);
 
     modifier voteExists(uint256 _voteId) {
         require(_voteId < votesLength, ERROR_NO_VOTE);
@@ -553,10 +554,14 @@ contract Voting is IForwarder, AragonApp {
             vote_.voters[_voter] = _isDelegate ? VoterState.DelegateNay : VoterState.Nay;
         }
 
-        emit CastVote(_voteId, _voter, _supports, voterStake, _isDelegate);
+        emit CastVote(_voteId, _voter, _supports, voterStake);
 
         if (_getVotePhase(vote_) == VotePhase.Objection) {
-            emit CastObjection(_voteId, _voter, voterStake, _isDelegate);
+            emit CastObjection(_voteId, _voter, voterStake);
+        }
+
+        if (_isDelegate) {
+            emit CastVoteAsDelegate(_voteId, msg.sender, _voter, _supports, voterStake);
         }
     }
 

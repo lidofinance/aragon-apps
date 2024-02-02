@@ -444,8 +444,10 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       it('delegate can vote for voter', async () => {
         const tx = await voting.voteFor(voteId, false, holder29, {from: delegate1})
         assertEvent(tx, 'CastVote', {expectedArgs: {voteId: voteId, voter: holder29, supports: false}})
+        assertEvent(tx, 'CastVoteAsDelegate', {expectedArgs: {voteId: voteId, delegate: delegate1, voter: holder29, supports: false}})
         assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
         assertAmountOfEvents(tx, 'CastObjection', {expectedAmount: 0})
+        assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
 
         const state = await voting.getVote(voteId)
         const voterState = await voting.getVoterState(voteId, holder29)
@@ -456,10 +458,13 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
 
       it('delegate can vote for both voters', async () => {
         const tx = await voting.voteForMultiple(voteId, false, [holder29, holder51], {from: delegate1})
-        assertEvent(tx, 'CastVote', {expectedArgs: {voteId: voteId, voter: holder29, supports: false, isDelegate: true}})
-        assertEvent(tx, 'CastVote', {index: 1, expectedArgs: {voteId: voteId, voter: holder51, supports: false, isDelegate: true}})
+        assertEvent(tx, 'CastVote', {expectedArgs: {voteId: voteId, voter: holder29, supports: false}})
+        assertEvent(tx, 'CastVote', {index: 1, expectedArgs: {voteId: voteId, voter: holder51, supports: false}})
+        assertEvent(tx, 'CastVoteAsDelegate', {expectedArgs: {voteId: voteId, delegate: delegate1, voter: holder29, supports: false}})
+        assertEvent(tx, 'CastVoteAsDelegate', {index: 1, expectedArgs: {voteId: voteId, delegate: delegate1, voter: holder51, supports: false}})
         assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 2})
         assertAmountOfEvents(tx, 'CastObjection', {expectedAmount: 0})
+        assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 2})
 
         const state = await voting.getVote(voteId)
         assertBn(state[7], bigExp(80, decimals), 'nay vote should have been counted')
@@ -473,10 +478,13 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
 
       it(`delegate can vote for multiple even if some voters aren't valid`, async () => {
         const tx = await voting.voteForMultiple(voteId, false, [holder29, holder51, holder1], {from: delegate1})
-        assertEvent(tx, 'CastVote', {expectedArgs: {voteId: voteId, voter: holder29, supports: false, isDelegate: true}})
-        assertEvent(tx, 'CastVote', {index: 1, expectedArgs: {voteId: voteId, voter: holder51, supports: false, isDelegate: true}})
+        assertEvent(tx, 'CastVote', {expectedArgs: {voteId: voteId, voter: holder29, supports: false}})
+        assertEvent(tx, 'CastVote', {index: 1, expectedArgs: {voteId: voteId, voter: holder51, supports: false}})
+        assertEvent(tx, 'CastVoteAsDelegate', {expectedArgs: {voteId: voteId, delegate: delegate1, voter: holder29, supports: false}})
+        assertEvent(tx, 'CastVoteAsDelegate', {index: 1, expectedArgs: {voteId: voteId, delegate: delegate1, voter: holder51, supports: false}})
         assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 2})
         assertAmountOfEvents(tx, 'CastObjection', {expectedAmount: 0})
+        assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 2})
 
         assertEvent(tx, 'VoteForMultipleSkippedFor', {expectedArgs: {voteId: voteId, delegate: delegate1, supports: false, skippedVoter: holder1}})
         assertAmountOfEvents(tx, 'VoteForMultipleSkippedFor', {expectedAmount: 1})
