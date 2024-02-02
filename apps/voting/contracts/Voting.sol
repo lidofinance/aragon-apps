@@ -92,7 +92,7 @@ contract Voting is IForwarder, AragonApp {
     event ChangeVoteTime(uint64 voteTime);
     event ChangeObjectionPhaseTime(uint64 objectionPhaseTime);
     event DelegateSet(address indexed voter, address indexed previousDelegate, address indexed newDelegate);
-    event VoteForMultipleSkippedFor(uint256 indexed voteId, address indexed delegate, bool supports, address[] skippedVoters);
+    event VoteForMultipleSkippedFor(uint256 indexed voteId, address indexed delegate, address indexed skippedVoter, bool supports);
 
     modifier voteExists(uint256 _voteId) {
         require(_voteId < votesLength, ERROR_NO_VOTE);
@@ -344,29 +344,19 @@ contract Voting is IForwarder, AragonApp {
     function _voteForMultiple(uint256 _voteId, bool _supports, address[] _voteForList) internal {
         address msgSender = msg.sender;
         uint256 length = _voteForList.length;
-        address[] memory skippedVoters = new address[](length);
-        uint256 skippedVotersIndex;
+        uint256 skippedVotersCount;
 
-        for (uint256 i = 0; i < length; i++) {
+        for (uint256 i = 0; i < length; ++i) {
             address voteFor_ = _voteForList[i];
             if (_canVoteFor(msgSender, voteFor_) && _isValidDelegatedVoter(_voteId, voteFor_)) {
                 _vote(_voteId, _supports, voteFor_, true);
             } else {
-                skippedVoters[skippedVotersIndex++] = voteFor_;
+                emit VoteForMultipleSkippedFor(_voteId, msgSender, voteFor_, _supports);
+                skippedVotersCount++;
             }
         }
 
-        if (skippedVotersIndex == length) {
-            revert(ERROR_CAN_NOT_VOTE_FOR_MULTIPLE);
-        }
-
-        if (skippedVotersIndex > 0) {
-            address[] memory filteredSkippedVoters = new address[](skippedVotersIndex);
-            for (uint256 j = 0; j < skippedVotersIndex; j++) {
-                filteredSkippedVoters[j] = skippedVoters[j];
-            }
-            emit VoteForMultipleSkippedFor(_voteId, msgSender, _supports, filteredSkippedVoters);
-        }
+        require(skippedVotersCount < length, ERROR_CAN_NOT_VOTE_FOR_MULTIPLE);
     }
 
     function voteForMultiple(uint256 _voteId, bool _supports, address[] _voteForList) external voteExists(_voteId) {

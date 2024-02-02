@@ -478,12 +478,8 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
         assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 2})
         assertAmountOfEvents(tx, 'CastObjection', {expectedAmount: 0})
 
-        assertEvent(tx, 'VoteForMultipleSkippedFor', {expectedArgs: {voteId: voteId, delegate: delegate1, supports: false}})
+        assertEvent(tx, 'VoteForMultipleSkippedFor', {expectedArgs: {voteId: voteId, delegate: delegate1, supports: false, skippedVoter: holder1}})
         assertAmountOfEvents(tx, 'VoteForMultipleSkippedFor', {expectedAmount: 1})
-
-        const skippedVoters = getEventArgument(tx, 'VoteForMultipleSkippedFor', 'skippedVoters')
-        assert.equal(skippedVoters.length, 1, 'should have skipped 1 voter')
-        assert.equal(skippedVoters[0], holder1, 'should have skipped holder1')
       })
 
       it(`revert if all voters aren't valid`, async () => {
