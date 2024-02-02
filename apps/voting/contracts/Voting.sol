@@ -175,7 +175,7 @@ contract Voting is IForwarder, AragonApp {
         require(_voter != address(0), ERROR_ZERO_ADDRESS_PASSED);
 
         uint256 length = delegatedVoters[_delegate].addresses.length;
-        for (uint256 i = 0; i < length; i++) {
+        for (uint256 i = 0; i < length; ++i) {
             if (delegatedVoters[_delegate].addresses[i] == _voter) {
                 delegatedVoters[_delegate].addresses[i] = delegatedVoters[_delegate].addresses[length - 1];
                 delete delegatedVoters[_delegate].addresses[length - 1];
@@ -183,6 +183,16 @@ contract Voting is IForwarder, AragonApp {
                 break;
             }
         }
+    }
+
+    function _isValidDelegatedVoter(
+        uint256 _voteId,
+        address _voter
+    ) internal view returns (bool) {
+        Vote storage vote_ = votes[_voteId];
+        VoterState state = vote_.voters[_voter];
+        uint256 votingPower = token.balanceOfAt(_voter, vote_.snapshotBlock);
+        return  votingPower > 0 && state != VoterState.Yea && state != VoterState.Nay;
     }
 
     function getDelegatedVoters(address _delegate) public view returns (address[] memory) {
@@ -195,17 +205,7 @@ contract Voting is IForwarder, AragonApp {
         return delegates[_voter];
     }
 
-    function _isValidDelegatedVoter(
-        uint256 _voteId,
-        address _voter
-    ) internal view returns (bool) {
-        Vote storage vote_ = votes[_voteId];
-        VoterState state = vote_.voters[_voter];
-        uint256 votingPower = token.balanceOfAt(_voter, vote_.snapshotBlock);
-        return votingPower > 0 && state != VoterState.Yea && state != VoterState.Nay;
-    }
-
-    function getDelegateTotalVotingPower(
+    function getDelegateFullPower(
         uint256 _voteId,
         address _delegate
     ) public view voteExists(_voteId) returns (uint256) {
@@ -218,7 +218,7 @@ contract Voting is IForwarder, AragonApp {
 
         address[] memory delegatedVoters_ = delegatedVoters[_delegate]
             .addresses;
-        for (uint256 i = 0; i < delegatedVoters_.length; i++) {
+        for (uint256 i = 0; i < delegatedVoters_.length; ++i) {
             address delegatedVoter = delegatedVoters_[i];
 
             if (_isValidDelegatedVoter(_voteId, delegatedVoter)) {
@@ -339,24 +339,6 @@ contract Voting is IForwarder, AragonApp {
         require(state != VoterState.Yea && state != VoterState.Nay, ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE);
 
         _vote(_voteId, _supports, _voteFor, true);
-    }
-
-    function _voteForMultiple(uint256 _voteId, bool _supports, address[] _voteForList) internal {
-        address msgSender = msg.sender;
-        uint256 length = _voteForList.length;
-        uint256 skippedVotersCount;
-
-        for (uint256 i = 0; i < length; ++i) {
-            address voteFor_ = _voteForList[i];
-            if (_canVoteFor(msgSender, voteFor_) && _isValidDelegatedVoter(_voteId, voteFor_)) {
-                _vote(_voteId, _supports, voteFor_, true);
-            } else {
-                emit VoteForMultipleSkippedFor(_voteId, msgSender, voteFor_, _supports);
-                skippedVotersCount++;
-            }
-        }
-
-        require(skippedVotersCount < length, ERROR_CAN_NOT_VOTE_FOR_MULTIPLE);
     }
 
     function voteForMultiple(uint256 _voteId, bool _supports, address[] _voteForList) external voteExists(_voteId) {
@@ -576,6 +558,24 @@ contract Voting is IForwarder, AragonApp {
         if (_getVotePhase(vote_) == VotePhase.Objection) {
             emit CastObjection(_voteId, _voter, voterStake, _isDelegate);
         }
+    }
+
+    function _voteForMultiple(uint256 _voteId, bool _supports, address[] _voteForList) internal {
+        address msgSender = msg.sender;
+        uint256 length = _voteForList.length;
+        uint256 skippedVotersCount;
+
+        for (uint256 i = 0; i < length; ++i) {
+            address voteFor_ = _voteForList[i];
+            if (_canVoteFor(msgSender, voteFor_) && _isValidDelegatedVoter(_voteId, voteFor_)) {
+                _vote(_voteId, _supports, voteFor_, true);
+            } else {
+                emit VoteForMultipleSkippedFor(_voteId, msgSender, voteFor_, _supports);
+                ++skippedVotersCount;
+            }
+        }
+
+        require(skippedVotersCount < length, ERROR_CAN_NOT_VOTE_FOR_MULTIPLE);
     }
 
     /**
