@@ -91,6 +91,7 @@ contract Voting is IForwarder, AragonApp {
     event ChangeVoteTime(uint64 voteTime);
     event ChangeObjectionPhaseTime(uint64 objectionPhaseTime);
     event DelegateSet(address indexed voter, address indexed previousDelegate, address indexed newDelegate);
+    event CastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, address indexed voter, bool supports, uint256 stake);
 
     modifier voteExists(uint256 _voteId) {
         require(_voteId < votesLength, ERROR_NO_VOTE);
@@ -511,11 +512,14 @@ contract Voting is IForwarder, AragonApp {
             vote_.voters[_voter] = _isDelegate ? VoterState.DelegateNay : VoterState.Nay;
         }
 
-        // TODO: consider to add an event indicates that delegate have voted
         emit CastVote(_voteId, _voter, _supports, voterStake);
 
         if (_getVotePhase(vote_) == VotePhase.Objection) {
             emit CastObjection(_voteId, _voter, voterStake);
+        }
+
+        if (_isDelegate) {
+            emit CastVoteAsDelegate(_voteId, msg.sender, _voter, _supports, voterStake);
         }
     }
 
