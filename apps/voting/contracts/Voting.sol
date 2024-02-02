@@ -215,8 +215,7 @@ contract Voting is IForwarder, AragonApp {
 
         require(_isVoteOpen(vote_), ERROR_CAN_NOT_VOTE);
 
-        uint256 totalVotingPower = token.balanceOfAt(_delegate, vote_.snapshotBlock);
-
+        uint256 totalVotingPower;
         address[] memory delegatedVoters_ = delegatedVoters[_delegate]
             .addresses;
         for (uint256 i = 0; i < delegatedVoters_.length; ++i) {
@@ -354,14 +353,7 @@ contract Voting is IForwarder, AragonApp {
         require(_isVoteOpen(vote_), ERROR_CAN_NOT_VOTE);
         require(_canCastYeaVote(_voteId, _supports), ERROR_CAN_NOT_VOTE);
 
-        address msgSender = msg.sender;
-        // Delegate votes for themselves
-        if (token.balanceOfAt(msgSender, vote_.snapshotBlock) > 0) {
-            _vote(_voteId, _supports, msgSender, false);
-        }
-
-
-        _voteForMultiple(_voteId, _supports, delegatedVoters[msgSender].addresses);
+        _voteForMultiple(_voteId, _supports, delegatedVoters[msg.sender].addresses);
     }
 
     /**
