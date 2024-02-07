@@ -140,6 +140,9 @@ contract Voting is IForwarder, AragonApp {
         address prevDelegate = delegates[msgSender].delegate;
         require(_delegate != prevDelegate, ERROR_DELEGATE_SAME_AS_PREV);
 
+        uint256 votingPower = token.balanceOfAt(msgSender, getBlockNumber64() - 1);
+        require(votingPower > 0, ERROR_NO_VOTING_POWER);
+
         if (prevDelegate != address(0)) {
             _removeDelegatedAddressFor(prevDelegate, msgSender);
         }
