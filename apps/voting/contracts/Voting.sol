@@ -44,7 +44,7 @@ contract Voting is IForwarder, AragonApp {
     string private constant ERROR_SELF_DELEGATE = "VOTING_SELF_DELEGATE";
     string private constant ERROR_DELEGATE_SAME_AS_PREV = "VOTING_DELEGATE_SAME_AS_PREV";
     string private constant ERROR_MAX_DELEGATED_VOTERS_REACHED = "VOTING_MAX_DELEGATED_VOTERS_REACHED";
-    string private constant ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE = "VOTING_MGR_CANT_OVERWRITE";
+    string private constant ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE = "VOTING_DELEGATE_CANT_OVERWRITE";
 
     enum VoterState { Absent, Yea, Nay, DelegateYea, DelegateNay }
 
