@@ -67,6 +67,11 @@ contract Voting is IForwarder, AragonApp {
         address[] addresses;
     }
 
+    struct Delegate {
+        address delegate;
+        uint256 voterIndex;
+    }
+
     MiniMeToken public token;
     uint64 public supportRequiredPct;
     uint64 public minAcceptQuorumPct;
@@ -80,7 +85,7 @@ contract Voting is IForwarder, AragonApp {
     // delegate -> [delegated voter address]
     mapping(address => DelegatedAddressList) private delegatedVoters;
     // voter -> delegate
-    mapping(address => address) private delegates;
+    mapping(address => Delegate) private delegates;
 
     event StartVote(uint256 indexed voteId, address indexed creator, string metadata);
     event CastVote(uint256 indexed voteId, address indexed voter, bool supports, uint256 stake);
@@ -90,7 +95,7 @@ contract Voting is IForwarder, AragonApp {
     event ChangeMinQuorum(uint64 minAcceptQuorumPct);
     event ChangeVoteTime(uint64 voteTime);
     event ChangeObjectionPhaseTime(uint64 objectionPhaseTime);
-    event DelegateSet(address indexed voter, address indexed previousDelegate, address indexed newDelegate);
+    event DelegateSet(address indexed voter, address indexed previousDelegate, address indexed newDelegate, uint256 voterIndex);
     event CastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, address indexed voter, bool supports, uint256 stake);
 
     modifier voteExists(uint256 _voteId) {
@@ -132,7 +137,7 @@ contract Voting is IForwarder, AragonApp {
         address msgSender = msg.sender;
         require(_delegate != msgSender, ERROR_SELF_DELEGATE);
 
-        address prevDelegate = delegates[msgSender];
+        address prevDelegate = delegates[msgSender].delegate;
         require(_delegate != prevDelegate, ERROR_DELEGATE_SAME_AS_PREV);
 
         if (prevDelegate != address(0)) {
@@ -140,9 +145,10 @@ contract Voting is IForwarder, AragonApp {
         }
 
         _addDelegatedAddressFor(_delegate, msgSender);
-        delegates[msgSender] = _delegate;
+        uint256 voterIndex = delegatedVoters[_delegate].addresses.length - 1;
+        delegates[msgSender] = Delegate(_delegate, voterIndex);
 
-        emit DelegateSet(msgSender, prevDelegate, _delegate);
+        emit DelegateSet(msgSender, prevDelegate, _delegate, voterIndex);
     }
 
     /**
@@ -150,38 +156,28 @@ contract Voting is IForwarder, AragonApp {
      */
     function removeDelegate() public {
         address msgSender = msg.sender;
-        address prevDelegate = delegates[msgSender];
+        address prevDelegate = delegates[msgSender].delegate;
         require(prevDelegate != address(0), ERROR_DELEGATE_NOT_SET);
 
         _removeDelegatedAddressFor(prevDelegate, msgSender);
-        delegates[msgSender] = address(0);
+        delegates[msgSender] = Delegate(address(0), 0);
 
-        emit DelegateSet(msgSender, prevDelegate, address(0));
+        emit DelegateSet(msgSender, prevDelegate, address(0), 0);
     }
 
     function _addDelegatedAddressFor(address _delegate, address _voter) internal {
-        require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
-        require(_voter != address(0), ERROR_ZERO_ADDRESS_PASSED);
-
         uint256 length = delegatedVoters[_delegate].addresses.length;
         require(length < MAX_VOTERS_PER_DELEGATE, ERROR_MAX_DELEGATED_VOTERS_REACHED);
 
         delegatedVoters[_delegate].addresses.push(_voter);
     }
-
     function _removeDelegatedAddressFor(address _delegate, address _voter) internal {
-        require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
-        require(_voter != address(0), ERROR_ZERO_ADDRESS_PASSED);
+        uint256 voterIndex = delegates[_voter].voterIndex;
 
         uint256 length = delegatedVoters[_delegate].addresses.length;
-        for (uint256 i = 0; i < length; i++) {
-            if (delegatedVoters[_delegate].addresses[i] == _voter) {
-                delegatedVoters[_delegate].addresses[i] = delegatedVoters[_delegate].addresses[length - 1];
-                delete delegatedVoters[_delegate].addresses[length - 1];
-                delegatedVoters[_delegate].addresses.length--;
-                break;
-            }
-        }
+        delegatedVoters[_delegate].addresses[voterIndex] = delegatedVoters[_delegate].addresses[length - 1];
+        delete delegatedVoters[_delegate].addresses[length - 1];
+        delegatedVoters[_delegate].addresses.length--;
     }
 
     function getDelegatedVoters(address _delegate) public view returns (address[] memory) {
@@ -191,7 +187,7 @@ contract Voting is IForwarder, AragonApp {
 
     function getDelegate(address _voter) public view returns (address) {
         require(_voter != address(0), ERROR_ZERO_ADDRESS_PASSED);
-        return delegates[_voter];
+        return delegates[_voter].delegate;
     }
 
     // TODO: add getter allowing easily calculate compound total voting power for set of delegated voters for particular voteId
@@ -587,7 +583,7 @@ contract Voting is IForwarder, AragonApp {
     function _canVoteFor(address _delegate, address _voter) internal view returns (bool) {
         require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
         require(_voter != address(0), ERROR_ZERO_ADDRESS_PASSED);
-        return delegates[_voter] == _delegate;
+        return delegates[_voter].delegate == _delegate;
     }
 
     function _canCastYeaVote(uint256 _voteId, bool _supports) internal view returns (bool) {
