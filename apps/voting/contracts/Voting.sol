@@ -45,6 +45,7 @@ contract Voting is IForwarder, AragonApp {
     string private constant ERROR_DELEGATE_SAME_AS_PREV = "VOTING_DELEGATE_SAME_AS_PREV";
     string private constant ERROR_MAX_DELEGATED_VOTERS_REACHED = "VOTING_MAX_DELEGATED_VOTERS_REACHED";
     string private constant ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE = "VOTING_DELEGATE_CANT_OVERWRITE";
+    string private constant ERROR_CAN_NOT_VOTE_FOR_MULTIPLE = "VOTING_CAN_NOT_VOTE_FOR_MULTIPLE";
 
     enum VoterState { Absent, Yea, Nay, DelegateYea, DelegateNay }
 
@@ -97,6 +98,7 @@ contract Voting is IForwarder, AragonApp {
     event ChangeObjectionPhaseTime(uint64 objectionPhaseTime);
     event DelegateSet(address indexed voter, address indexed previousDelegate, address indexed newDelegate, uint256 voterIndex);
     event CastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, address indexed voter, bool supports, uint256 stake);
+    event VoteForMultipleSkippedFor(uint256 indexed voteId, address indexed delegate, address indexed skippedVoter, bool supports);
 
     modifier voteExists(uint256 _voteId) {
         require(_voteId < votesLength, ERROR_NO_VOTE);
@@ -298,6 +300,11 @@ contract Voting is IForwarder, AragonApp {
         require(_canVoteFor(msg.sender, _voteFor), ERROR_CAN_NOT_VOTE_FOR);
         require(_canVote(_voteId, _voteFor), ERROR_CAN_NOT_VOTE);
         require(_canCastYeaVote(_voteId, _supports), ERROR_CAN_NOT_VOTE);
+
+        Vote storage vote_ = votes[_voteId];
+        VoterState state = vote_.voters[_voteFor];
+        require(state != VoterState.Yea && state != VoterState.Nay, ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE);
+
         _vote(_voteId, _supports, _voteFor, true);
     }
 
@@ -306,14 +313,27 @@ contract Voting is IForwarder, AragonApp {
      * of both self-delegated address and delegated addresses / write voteWithFullPower function
      */
     function voteForMultiple(uint256 _voteId, bool _supports, address[] _voteForList) external voteExists(_voteId) {
+        Vote storage vote_ = votes[_voteId];
+        require(_isVoteOpen(vote_), ERROR_CAN_NOT_VOTE);
         require(_canCastYeaVote(_voteId, _supports), ERROR_CAN_NOT_VOTE);
 
-        for (uint i = 0; i < _voteForList.length; i++) {
-            address _voteFor = _voteForList[i];
-            require(_canVoteFor(msg.sender, _voteFor), ERROR_CAN_NOT_VOTE_FOR);
-            require(_canVote(_voteId, _voteFor), ERROR_CAN_NOT_VOTE);
-            _vote(_voteId, _supports, _voteFor, true);
+        address msgSender = msg.sender;
+        uint256 length = _voteForList.length;
+        uint256 skippedVotersCount;
+
+        for (uint256 i = 0; i < length; ++i) {
+            address voteFor_ = _voteForList[i];
+            uint256 votingPower = token.balanceOfAt(voteFor_, vote_.snapshotBlock);
+            VoterState state = vote_.voters[voteFor_];
+            if (_canVoteFor(msgSender, voteFor_) && votingPower > 0 && state != VoterState.Yea && state != VoterState.Nay) {
+                _vote(_voteId, _supports, voteFor_, true);
+            } else {
+                emit VoteForMultipleSkippedFor(_voteId, msgSender, voteFor_, _supports);
+                ++skippedVotersCount;
+            }
         }
+
+        require(skippedVotersCount < length, ERROR_CAN_NOT_VOTE_FOR_MULTIPLE);
     }
 
     /**
@@ -490,11 +510,6 @@ contract Voting is IForwarder, AragonApp {
         // This could re-enter, though we can assume the governance token is not malicious
         uint256 voterStake = token.balanceOfAt(_voter, vote_.snapshotBlock);
         VoterState state = vote_.voters[_voter];
-
-        // Delegate can't overwrite voter vote
-        if (_isDelegate && (state == VoterState.Yea || state == VoterState.Nay)) {
-            revert(ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE);
-        }
 
         // If voter had previously voted, decrease count
         if (state == VoterState.Yea || state == VoterState.DelegateYea) {
