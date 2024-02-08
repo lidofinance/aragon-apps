@@ -23,7 +23,6 @@ contract Voting is IForwarder, AragonApp {
     bytes32 public constant UNSAFELY_MODIFY_VOTE_TIME_ROLE = keccak256("UNSAFELY_MODIFY_VOTE_TIME_ROLE");
 
     uint64 public constant PCT_BASE = 10 ** 18; // 0% = 0; 1% = 10^16; 100% = 10^18
-    uint64 public constant MAX_VOTERS_PER_DELEGATE = 1024; // some reasonable number to mitigate unbound loop issue
 
     string private constant ERROR_NO_VOTE = "VOTING_NO_VOTE";
     string private constant ERROR_INIT_PCTS = "VOTING_INIT_PCTS";
@@ -164,11 +163,9 @@ contract Voting is IForwarder, AragonApp {
     }
 
     function _addDelegatedAddressFor(address _delegate, address _voter) internal {
-        uint256 length = delegatedVoters[_delegate].addresses.length;
-        require(length < MAX_VOTERS_PER_DELEGATE, ERROR_MAX_DELEGATED_VOTERS_REACHED);
-
         delegatedVoters[_delegate].addresses.push(_voter);
     }
+    
     function _removeDelegatedAddressFor(address _delegate, address _voter) internal {
         uint96 voterIndex = delegates[_voter].voterIndex;
 
