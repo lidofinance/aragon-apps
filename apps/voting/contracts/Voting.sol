@@ -96,7 +96,7 @@ contract Voting is IForwarder, AragonApp {
     event ChangeMinQuorum(uint64 minAcceptQuorumPct);
     event ChangeVoteTime(uint64 voteTime);
     event ChangeObjectionPhaseTime(uint64 objectionPhaseTime);
-    event DelegateSet(address indexed voter, address indexed previousDelegate, address indexed newDelegate, uint96 voterIndex);
+    event DelegateSet(address indexed voter, address indexed previousDelegate, address indexed newDelegate);
     event CastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, address indexed voter, bool supports, uint256 stake);
     event VoteForMultipleSkippedFor(uint256 indexed voteId, address indexed delegate, address indexed skippedVoter, bool supports);
 
@@ -130,9 +130,6 @@ contract Voting is IForwarder, AragonApp {
         objectionPhaseTime = _objectionPhaseTime;
     }
 
-    /**
-     * TODO: Calculate gas spending and add hint for more efficient look up in the array if needed
-     */
     function setDelegate(address _delegate) public {
         require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
 
@@ -150,15 +147,11 @@ contract Voting is IForwarder, AragonApp {
         }
 
         _addDelegatedAddressFor(_delegate, msgSender);
-        uint96 voterIndex = uint96(delegatedVoters[_delegate].addresses.length - 1);
-        delegates[msgSender] = Delegate(_delegate, voterIndex);
+        delegates[msgSender] = Delegate(_delegate, uint96(delegatedVoters[_delegate].addresses.length - 1));
 
-        emit DelegateSet(msgSender, prevDelegate, _delegate, voterIndex);
+        emit DelegateSet(msgSender, prevDelegate, _delegate);
     }
 
-    /**
-     * TODO: Calculate gas spending and add hint for more efficient look up in the array if needed
-     */
     function removeDelegate() public {
         address msgSender = msg.sender;
         address prevDelegate = delegates[msgSender].delegate;
@@ -167,7 +160,7 @@ contract Voting is IForwarder, AragonApp {
         _removeDelegatedAddressFor(prevDelegate, msgSender);
         delegates[msgSender] = Delegate(address(0), 0);
 
-        emit DelegateSet(msgSender, prevDelegate, address(0), 0);
+        emit DelegateSet(msgSender, prevDelegate, address(0));
     }
 
     function _addDelegatedAddressFor(address _delegate, address _voter) internal {
@@ -309,10 +302,6 @@ contract Voting is IForwarder, AragonApp {
         _vote(_voteId, _supports, _voteFor, true);
     }
 
-    /**
-     * TODO: Update the voteForMultiple function to allow voting with the entire voting power
-     * of both self-delegated address and delegated addresses / write voteWithFullPower function
-     */
     function voteForMultiple(uint256 _voteId, bool _supports, address[] _voteForList) external voteExists(_voteId) {
         Vote storage vote_ = votes[_voteId];
         require(_isVoteOpen(vote_), ERROR_CAN_NOT_VOTE);
