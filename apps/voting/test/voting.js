@@ -957,6 +957,24 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       assertAmountOfEvents(tx, 'DelegateSet', {expectedAmount: 1})
     })
 
+    it('voters can remove delegates', async () => {
+      await voting.setDelegate(delegate1, {from: holder20})
+      await voting.setDelegate(delegate1, {from: holder29})
+      await voting.setDelegate(delegate1, {from: holder51})
+
+
+      const tx1 = await voting.removeDelegate({from: holder29})
+      assertEvent(tx1, 'DelegateSet', {
+        expectedArgs: {voter: holder29, previousDelegate: delegate1, newDelegate: ZERO_ADDRESS}
+      })
+      assertAmountOfEvents(tx1, 'DelegateSet', {expectedAmount: 1})
+      const tx2 = await voting.removeDelegate({from: holder51})
+      assertEvent(tx2, 'DelegateSet', {
+        expectedArgs: {voter: holder51, previousDelegate: delegate1, newDelegate: ZERO_ADDRESS}
+      })
+      assertAmountOfEvents(tx2, 'DelegateSet', {expectedAmount: 1})
+    })
+
     it('delegate can manage several voters', async () => {
       await voting.setDelegate(delegate1, {from: holder29})
 

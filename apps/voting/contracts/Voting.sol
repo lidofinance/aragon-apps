@@ -70,7 +70,7 @@ contract Voting is IForwarder, AragonApp {
 
     struct Delegate {
         address delegate;
-        uint256 voterIndex;
+        uint96 voterIndex;
     }
 
     MiniMeToken public token;
@@ -96,7 +96,7 @@ contract Voting is IForwarder, AragonApp {
     event ChangeMinQuorum(uint64 minAcceptQuorumPct);
     event ChangeVoteTime(uint64 voteTime);
     event ChangeObjectionPhaseTime(uint64 objectionPhaseTime);
-    event DelegateSet(address indexed voter, address indexed previousDelegate, address indexed newDelegate, uint256 voterIndex);
+    event DelegateSet(address indexed voter, address indexed previousDelegate, address indexed newDelegate, uint96 voterIndex);
     event CastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, address indexed voter, bool supports, uint256 stake);
     event VoteForMultipleSkippedFor(uint256 indexed voteId, address indexed delegate, address indexed skippedVoter, bool supports);
 
@@ -150,7 +150,7 @@ contract Voting is IForwarder, AragonApp {
         }
 
         _addDelegatedAddressFor(_delegate, msgSender);
-        uint256 voterIndex = delegatedVoters[_delegate].addresses.length - 1;
+        uint96 voterIndex = uint96(delegatedVoters[_delegate].addresses.length - 1);
         delegates[msgSender] = Delegate(_delegate, voterIndex);
 
         emit DelegateSet(msgSender, prevDelegate, _delegate, voterIndex);
@@ -177,10 +177,11 @@ contract Voting is IForwarder, AragonApp {
         delegatedVoters[_delegate].addresses.push(_voter);
     }
     function _removeDelegatedAddressFor(address _delegate, address _voter) internal {
-        uint256 voterIndex = delegates[_voter].voterIndex;
+        uint96 voterIndex = delegates[_voter].voterIndex;
 
         uint256 length = delegatedVoters[_delegate].addresses.length;
         delegatedVoters[_delegate].addresses[voterIndex] = delegatedVoters[_delegate].addresses[length - 1];
+        delegates[delegatedVoters[_delegate].addresses[length - 1]].voterIndex = voterIndex;
         delete delegatedVoters[_delegate].addresses[length - 1];
         delegatedVoters[_delegate].addresses.length--;
     }
