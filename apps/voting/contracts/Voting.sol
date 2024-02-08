@@ -45,6 +45,7 @@ contract Voting is IForwarder, AragonApp {
     string private constant ERROR_MAX_DELEGATED_VOTERS_REACHED = "VOTING_MAX_DELEGATED_VOTERS_REACHED";
     string private constant ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE = "VOTING_DELEGATE_CANT_OVERWRITE";
     string private constant ERROR_CAN_NOT_VOTE_FOR_MULTIPLE = "VOTING_CAN_NOT_VOTE_FOR_MULTIPLE";
+    string private constant ERROR_INVALID_OFFSET_AND_COUNT = "VOTING_INVALID_OFFSET_AND_COUNT";
 
     enum VoterState { Absent, Yea, Nay, DelegateYea, DelegateNay }
 
@@ -165,7 +166,7 @@ contract Voting is IForwarder, AragonApp {
     function _addDelegatedAddressFor(address _delegate, address _voter) internal {
         delegatedVoters[_delegate].addresses.push(_voter);
     }
-    
+
     function _removeDelegatedAddressFor(address _delegate, address _voter) internal {
         uint96 voterIndex = delegates[_voter].voterIndex;
 
@@ -176,17 +177,26 @@ contract Voting is IForwarder, AragonApp {
         delegatedVoters[_delegate].addresses.length--;
     }
 
-    function getDelegatedVoters(address _delegate) public view returns (address[] memory) {
+    function getDelegatedVoters(address _delegate, uint96 offset, uint96 count) public view returns (address[] memory) {
         require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
-        return delegatedVoters[_delegate].addresses;
+        require(count > 0 && offset >= 0 && offset + count <= delegatedVoters[_delegate].addresses.length, ERROR_INVALID_OFFSET_AND_COUNT);
+
+        address[] memory result = new address[](count);
+        for (uint256 i = 0; i < count; ++i) {
+            result[i] = delegatedVoters[_delegate].addresses[offset + i];
+        }
+        return result;
+    }
+
+    function getTotalDelegatedVotersCount(address _delegate) public view returns (uint256) {
+        require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
+        return delegatedVoters[_delegate].addresses.length;
     }
 
     function getDelegate(address _voter) public view returns (address) {
         require(_voter != address(0), ERROR_ZERO_ADDRESS_PASSED);
         return delegates[_voter].delegate;
     }
-
-    // TODO: add getter allowing easily calculate compound total voting power for set of delegated voters for particular voteId
 
     /**
     * @notice Change required support to `@formatPct(_supportRequiredPct)`%
