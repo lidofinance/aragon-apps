@@ -292,45 +292,34 @@ contract Voting is IForwarder, AragonApp {
     */
     function vote(uint256 _voteId, bool _supports, bool _executesIfDecided_deprecated) external voteExists(_voteId) {
         require(_canVote(_voteId, msg.sender), ERROR_CAN_NOT_VOTE);
-        require(_canCastYeaVote(_voteId, _supports), ERROR_CAN_NOT_VOTE);
+        require(_isProperPhaseToVote(_voteId, _supports), ERROR_CAN_NOT_VOTE);
         _vote(_voteId, _supports, msg.sender, false);
     }
 
     function voteFor(uint256 _voteId, bool _supports, address _voteFor) external voteExists(_voteId) {
-        require(_canVoteFor(msg.sender, _voteFor), ERROR_CAN_NOT_VOTE_FOR);
-        require(_canVote(_voteId, _voteFor), ERROR_CAN_NOT_VOTE);
-        require(_canCastYeaVote(_voteId, _supports), ERROR_CAN_NOT_VOTE);
-
         Vote storage vote_ = votes[_voteId];
-        VoterState state = vote_.voters[_voteFor];
-        require(state != VoterState.Yea && state != VoterState.Nay, ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE);
-
+        require(_isVoteOpen(vote_), ERROR_CAN_NOT_VOTE);
+        require(_isProperPhaseToVote(_voteId, _supports), ERROR_CAN_NOT_VOTE);
+        require(_hasEnoughVotingPower(vote_, _voteFor), ERROR_CAN_NOT_VOTE);
+        require(_canVoteFor(msg.sender, _voteFor), ERROR_CAN_NOT_VOTE_FOR);
+        require(!_hasVoted(_voteId, _voteFor), ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE);
         _vote(_voteId, _supports, _voteFor, true);
     }
 
     function voteForMultiple(uint256 _voteId, bool _supports, address[] _voteForList) external voteExists(_voteId) {
         Vote storage vote_ = votes[_voteId];
         require(_isVoteOpen(vote_), ERROR_CAN_NOT_VOTE);
-        require(_canCastYeaVote(_voteId, _supports), ERROR_CAN_NOT_VOTE);
+        require(_isProperPhaseToVote(_voteId, _supports), ERROR_CAN_NOT_VOTE);
 
-        address msgSender = msg.sender;
-        uint256 length = _voteForList.length;
-        uint256 skippedVotersCount;
-
-        for (uint256 i = 0; i < length; ++i) {
+        for (uint256 i = 0; i < _voteForList.length; ++i) {
             address voteFor_ = _voteForList[i];
-            uint256 votingPower = token.balanceOfAt(voteFor_, vote_.snapshotBlock);
-            VoterState state = vote_.voters[voteFor_];
-            if (_canVoteFor(msgSender, voteFor_) && votingPower > 0 && state != VoterState.Yea && state != VoterState.Nay) {
-                _vote(_voteId, _supports, voteFor_, true);
-            } else {
-                emit VoteForMultipleSkippedFor(_voteId, msgSender, voteFor_, _supports);
-                ++skippedVotersCount;
-            }
+            require(_hasEnoughVotingPower(vote_, voteFor_), ERROR_CAN_NOT_VOTE);
+            require(_canVoteFor(msg.sender, voteFor_), ERROR_CAN_NOT_VOTE_FOR);
+            require(!_hasVoted(_voteId, voteFor_), ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE);
+            _vote(_voteId, _supports, voteFor_, true);  
         }
-
-        require(skippedVotersCount < length, ERROR_CAN_NOT_VOTE_FOR_MULTIPLE);
     }
+    
 
     /**
     * @notice Execute vote #`_voteId`
@@ -591,7 +580,7 @@ contract Voting is IForwarder, AragonApp {
     */
     function _canVote(uint256 _voteId, address _voter) internal view returns (bool) {
         Vote storage vote_ = votes[_voteId];
-        return _isVoteOpen(vote_) && token.balanceOfAt(_voter, vote_.snapshotBlock) > 0;
+        return _isVoteOpen(vote_) && _hasEnoughVotingPower(vote_, _voter);
     }
 
     function _canVoteFor(address _delegate, address _voter) internal view returns (bool) {
@@ -600,8 +589,17 @@ contract Voting is IForwarder, AragonApp {
         return delegates[_voter].delegate == _delegate;
     }
 
-    function _canCastYeaVote(uint256 _voteId, bool _supports) internal view returns (bool) {
+    function _isProperPhaseToVote(uint256 _voteId, bool _supports) internal view returns (bool) {
         return !_supports || _getVotePhase(votes[_voteId]) == VotePhase.Main;
+    }
+
+    function _hasVoted(uint256 _voteId, address _voter) internal view returns (bool) {
+        VoterState state = votes[_voteId].voters[_voter];
+        return state == VoterState.Yea || state == VoterState.Nay;
+    }
+
+    function _hasEnoughVotingPower(Vote storage vote_, address _voter) internal view returns (bool) {
+        return token.balanceOfAt(_voter, vote_.snapshotBlock) > 0;
     }
 
     /**

@@ -476,28 +476,11 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
         assert.equal(voterState51, VOTER_STATE.DELEGATE_NAY, 'holder51 should have delegate nay voter status')
       })
 
-      it(`delegate can vote for multiple even if some voters aren't valid`, async () => {
-        const tx = await voting.voteForMultiple(voteId, false, [holder29, holder51, holder1], {from: delegate1})
-        assertEvent(tx, 'CastVote', {expectedArgs: {voteId: voteId, voter: holder29, supports: false}})
-        assertEvent(tx, 'CastVote', {index: 1, expectedArgs: {voteId: voteId, voter: holder51, supports: false}})
-        assertEvent(tx, 'CastVoteAsDelegate', {expectedArgs: {voteId: voteId, delegate: delegate1, voter: holder29, supports: false}})
-        assertEvent(tx, 'CastVoteAsDelegate', {index: 1, expectedArgs: {voteId: voteId, delegate: delegate1, voter: holder51, supports: false}})
-        assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 2})
-        assertAmountOfEvents(tx, 'CastObjection', {expectedAmount: 0})
-        assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 2})
-
-        assertEvent(tx, 'VoteForMultipleSkippedFor', {expectedArgs: {voteId: voteId, delegate: delegate1, supports: false, skippedVoter: holder1}})
-        assertAmountOfEvents(tx, 'VoteForMultipleSkippedFor', {expectedAmount: 1})
-      })
-
-      it(`revert if all voters aren't valid`, async () => {
+      it(`delegate can't vote for both voters if one has previously voted`, async () => {
+        await voting.vote(voteId, false, true, { from: holder29 })
         await assertRevert(
-          voting.voteForMultiple(
-            voteId,
-            false,
-            [holder1, holder2],
-            {from: delegate1}
-          ), ERRORS.VOTING_CAN_NOT_VOTE_FOR_MULTIPLE
+          voting.voteForMultiple(voteId, false, [holder29, holder51], {from: delegate1}),
+          ERRORS.VOTING_DELEGATE_CANT_OVERWRITE
         )
       })
 
