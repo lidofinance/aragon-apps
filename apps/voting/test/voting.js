@@ -930,7 +930,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       assertArraysEqualAsSets(delegatedVoters, [holder29], 'delegate1 should be a delegate of holder29')
     })
 
-    it('voter can remove delegates', async () => {
+    it('voter can remove delegate', async () => {
       await voting.setDelegate(delegate1, {from: holder29})
 
       const tx = await voting.removeDelegate({from: holder29})
@@ -938,9 +938,11 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
         expectedArgs: {voter: holder29, previousDelegate: delegate1, newDelegate: ZERO_ADDRESS}
       })
       assertAmountOfEvents(tx, 'DelegateSet', {expectedAmount: 1})
+      const delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, 1))[0]
+      assertArraysEqualAsSets(delegatedVoters, [], 'delegate1 should not be a delegate of anyone')
     })
 
-    it('voters can remove delegates', async () => {
+    it('voters can remove delegate', async () => {
       await voting.setDelegate(delegate1, {from: holder20})
       await voting.setDelegate(delegate1, {from: holder29})
       await voting.setDelegate(delegate1, {from: holder51})
@@ -956,6 +958,20 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
         expectedArgs: {voter: holder51, previousDelegate: delegate1, newDelegate: ZERO_ADDRESS}
       })
       assertAmountOfEvents(tx2, 'DelegateSet', {expectedAmount: 1})
+      const delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, 1))[0]
+      assertArraysEqualAsSets(delegatedVoters, [holder20], 'delegate1 have only holder20 as a delegated voter')
+    })
+
+    it('voter can change delegate', async () => {
+      await voting.setDelegate(delegate1, {from: holder29})
+      await voting.setDelegate(delegate2, {from: holder51})
+
+      await voting.setDelegate(delegate2, {from: holder29})
+
+      const delegatedVotersDelegate1 = (await voting.getDelegatedVoters(delegate1, 0, 1))[0]
+      assertArraysEqualAsSets(delegatedVotersDelegate1, [], 'delegate1 should not be a delegate of anyone')
+      const delegatedVotersDelegate2 = (await voting.getDelegatedVoters(delegate2, 0, 2))[0]
+      assertArraysEqualAsSets(delegatedVotersDelegate2, [holder29, holder51], 'delegate2 should be a delegate of holder29 and holder51')
     })
 
     it('delegate can manage several voters', async () => {

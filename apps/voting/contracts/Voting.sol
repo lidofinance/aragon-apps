@@ -146,7 +146,7 @@ contract Voting is IForwarder, AragonApp {
         }
 
         _addDelegatedAddressFor(_delegate, msgSender);
-        delegates[msgSender] = Delegate(_delegate, uint96(delegatedVoters[_delegate].addresses.length - 1));
+        delegates[msgSender] = Delegate(_delegate, uint96(delegatedVoters[_delegate].addresses.length.sub(1)));
 
         emit DelegateSet(msgSender, prevDelegate, _delegate);
     }
@@ -168,11 +168,13 @@ contract Voting is IForwarder, AragonApp {
 
     function _removeDelegatedAddressFor(address _delegate, address _voter) internal {
         uint96 voterIndex = delegates[_voter].voterIndex;
-
-        uint256 length = delegatedVoters[_delegate].addresses.length;
-        delegatedVoters[_delegate].addresses[voterIndex] = delegatedVoters[_delegate].addresses[length - 1];
-        delegates[delegatedVoters[_delegate].addresses[length - 1]].voterIndex = voterIndex;
-        delete delegatedVoters[_delegate].addresses[length - 1];
+        uint256 lastIndex = delegatedVoters[_delegate].addresses.length - 1;
+        address lastVoter = delegatedVoters[_delegate].addresses[lastIndex];
+        if (voterIndex < lastIndex) {
+            delegatedVoters[_delegate].addresses[voterIndex] = lastVoter;
+            delegates[lastVoter].voterIndex = voterIndex;
+        }
+        delete delegatedVoters[_delegate].addresses[lastIndex];
         delegatedVoters[_delegate].addresses.length--;
     }
 
@@ -212,7 +214,7 @@ contract Voting is IForwarder, AragonApp {
         return (votersList, votingPowerList, voterStateList);
     }
 
-    function getTotalDelegatedVotersCount(address _delegate) public view returns (uint256) {
+    function getDelegatedVotersTotalCount(address _delegate) public view returns (uint256) {
         require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
         return delegatedVoters[_delegate].addresses.length;
     }
