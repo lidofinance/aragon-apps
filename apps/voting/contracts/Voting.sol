@@ -44,7 +44,7 @@ contract Voting is IForwarder, AragonApp {
     string private constant ERROR_DELEGATE_SAME_AS_PREV = "VOTING_DELEGATE_SAME_AS_PREV";
     string private constant ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE = "VOTING_DELEGATE_CANT_OVERWRITE";
     string private constant ERROR_CAN_NOT_VOTE_FOR_MULTIPLE = "VOTING_CAN_NOT_VOTE_FOR_MULTIPLE";
-    string private constant ERROR_INVALID_OFFSET_AND_COUNT = "VOTING_INVALID_OFFSET_AND_COUNT";
+    string private constant ERROR_INVALID_OFFSET_OR_COUNT = "VOTING_INVALID_OFFSET_OR_COUNT";
 
     enum VoterState { Absent, Yea, Nay, DelegateYea, DelegateNay }
 
@@ -176,15 +176,40 @@ contract Voting is IForwarder, AragonApp {
         delegatedVoters[_delegate].addresses.length--;
     }
 
-    function getDelegatedVoters(address _delegate, uint96 offset, uint96 count) public view returns (address[] memory) {
+    function _getDelegatedVotersAt(address _delegate, uint256 _blockNumber, uint256 _offset, uint256 _count) internal view returns (address[], uint256[]) {
         require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
-        require(count > 0 && offset >= 0 && offset + count <= delegatedVoters[_delegate].addresses.length, ERROR_INVALID_OFFSET_AND_COUNT);
-
-        address[] memory result = new address[](count);
-        for (uint256 i = 0; i < count; ++i) {
-            result[i] = delegatedVoters[_delegate].addresses[offset + i];
+        uint256 length = delegatedVoters[_delegate].addresses.length;
+        if (length == 0) {
+            return (new address[](0), new uint256[](0));
         }
-        return result;
+
+        require(_count > 0 && _count.add(_offset) <= length, ERROR_INVALID_OFFSET_OR_COUNT);
+
+        address[] memory votersList = new address[](_count);
+        uint256[] memory votingPowerList = new uint256[](_count);
+        for (uint256 i = 0; i < _count; ++i) {
+            address voter = delegatedVoters[_delegate].addresses[_offset + i];
+            votersList[i] = voter;
+            votingPowerList[i] = token.balanceOfAt(voter, _blockNumber);
+        }
+        return (votersList, votingPowerList);
+    }
+
+    function getDelegatedVoters(address _delegate, uint256 _offset, uint256 _count) public view returns (address[], uint256[]) {
+        return _getDelegatedVotersAt(_delegate, block.number, _offset, _count);
+    }
+
+    function getDelegatedVotersAtVote(address _delegate, uint256 _voteId, uint256 _offset, uint256 _count) public view voteExists(_voteId) returns (address[], uint256[], VoterState[]) {
+        Vote storage vote_ = votes[_voteId];
+        address[] memory votersList;
+        uint256[] memory votingPowerList;
+        (votersList, votingPowerList) = _getDelegatedVotersAt(_delegate, vote_.snapshotBlock, _offset, _count);
+
+        VoterState[] memory voterStateList = new VoterState[](votersList.length);
+        for (uint256 i = 0; i < votersList.length; ++i) {
+            voterStateList[i] = vote_.voters[votersList[i]];
+        }
+        return (votersList, votingPowerList, voterStateList);
     }
 
     function getTotalDelegatedVotersCount(address _delegate) public view returns (uint256) {
@@ -316,10 +341,10 @@ contract Voting is IForwarder, AragonApp {
             require(_hasEnoughVotingPower(vote_, voteFor_), ERROR_CAN_NOT_VOTE);
             require(_canVoteFor(msg.sender, voteFor_), ERROR_CAN_NOT_VOTE_FOR);
             require(!_hasVoted(_voteId, voteFor_), ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE);
-            _vote(_voteId, _supports, voteFor_, true);  
+            _vote(_voteId, _supports, voteFor_, true);
         }
     }
-    
+
 
     /**
     * @notice Execute vote #`_voteId`

@@ -926,7 +926,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       const delegate = await voting.getDelegate(holder29)
       assert.equal(delegate, delegate1, 'holder29 should have delegate1 as a delegate')
 
-      const delegatedVoters = await voting.getDelegatedVoters(delegate1, 0, 1)
+      const delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, 1))[0]
       assertArraysEqualAsSets(delegatedVoters, [holder29], 'delegate1 should be a delegate of holder29')
     })
 
@@ -967,7 +967,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       })
       assertAmountOfEvents(tx, 'DelegateSet', {expectedAmount: 1})
 
-      const delegatedVoters = await voting.getDelegatedVoters(delegate1, 0, 2)
+      const delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, 2))[0]
       assertArraysEqualAsSets(delegatedVoters, [holder29, holder51], 'delegate1 should be a delegate of holder29 and holder51')
     })
   })
