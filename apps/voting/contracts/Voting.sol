@@ -44,7 +44,6 @@ contract Voting is IForwarder, AragonApp {
     string private constant ERROR_SELF_DELEGATE = "VOTING_SELF_DELEGATE";
     string private constant ERROR_DELEGATE_SAME_AS_PREV = "VOTING_DELEGATE_SAME_AS_PREV";
     string private constant ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE = "VOTING_DELEGATE_CANT_OVERWRITE";
-    string private constant ERROR_CAN_NOT_VOTE_FOR_MULTIPLE = "VOTING_CAN_NOT_VOTE_FOR_MULTIPLE";
     string private constant ERROR_INVALID_OFFSET_OR_COUNT = "VOTING_INVALID_OFFSET_OR_COUNT";
     string private constant ERROR_MAX_DELEGATED_VOTERS_REACHED = "VOTING_MAX_DELEGATED_VOTERS_REACHED";
 
@@ -99,7 +98,6 @@ contract Voting is IForwarder, AragonApp {
     event ChangeObjectionPhaseTime(uint64 objectionPhaseTime);
     event DelegateSet(address indexed voter, address indexed previousDelegate, address indexed newDelegate);
     event CastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, address indexed voter, bool supports, uint256 stake);
-    event VoteForMultipleSkippedFor(uint256 indexed voteId, address indexed delegate, address indexed skippedVoter, bool supports);
 
     modifier voteExists(uint256 _voteId) {
         require(_voteId < votesLength, ERROR_NO_VOTE);
