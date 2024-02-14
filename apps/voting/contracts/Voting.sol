@@ -43,7 +43,6 @@ contract Voting is IForwarder, AragonApp {
     string private constant ERROR_DELEGATE_NOT_SET = "VOTING_DELEGATE_NOT_SET";
     string private constant ERROR_SELF_DELEGATE = "VOTING_SELF_DELEGATE";
     string private constant ERROR_DELEGATE_SAME_AS_PREV = "VOTING_DELEGATE_SAME_AS_PREV";
-    string private constant ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE = "VOTING_DELEGATE_CANT_OVERWRITE";
     string private constant ERROR_INVALID_OFFSET_OR_COUNT = "VOTING_INVALID_OFFSET_OR_COUNT";
     string private constant ERROR_MAX_DELEGATED_VOTERS_REACHED = "VOTING_MAX_DELEGATED_VOTERS_REACHED";
 
@@ -321,32 +320,28 @@ contract Voting is IForwarder, AragonApp {
     * @param _executesIfDecided_deprecated Whether the vote should execute its action if it becomes decided
     */
     function vote(uint256 _voteId, bool _supports, bool _executesIfDecided_deprecated) external voteExists(_voteId) {
-        require(_canVote(_voteId, msg.sender), ERROR_CAN_NOT_VOTE);
-        require(_isProperPhaseToVote(_voteId, _supports), ERROR_CAN_NOT_VOTE);
+        require(_canParticipateInVote(_voteId, _supports), ERROR_CAN_NOT_VOTE);
+        require(_hasVotingPower(votes[_voteId], msg.sender), ERROR_NO_VOTING_POWER);
         _vote(_voteId, _supports, msg.sender, false);
     }
 
-    function voteFor(uint256 _voteId, bool _supports, address _voteFor) external voteExists(_voteId) {
-        Vote storage vote_ = votes[_voteId];
-        require(_isVoteOpen(vote_), ERROR_CAN_NOT_VOTE);
-        require(_isProperPhaseToVote(_voteId, _supports), ERROR_CAN_NOT_VOTE);
-        require(_hasEnoughVotingPower(vote_, _voteFor), ERROR_CAN_NOT_VOTE);
-        require(_canVoteFor(msg.sender, _voteFor), ERROR_CAN_NOT_VOTE_FOR);
-        require(!_hasVoted(_voteId, _voteFor), ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE);
-        _vote(_voteId, _supports, _voteFor, true);
+    function voteFor(uint256 _voteId, bool _supports, address _voter) external voteExists(_voteId) {
+        address[] memory voters = new address[](1);
+        voters[0] = _voter;
+        voteForMultiple(_voteId, _supports, voters);
     }
 
-    function voteForMultiple(uint256 _voteId, bool _supports, address[] _voteForList) external voteExists(_voteId) {
-        Vote storage vote_ = votes[_voteId];
-        require(_isVoteOpen(vote_), ERROR_CAN_NOT_VOTE);
-        require(_isProperPhaseToVote(_voteId, _supports), ERROR_CAN_NOT_VOTE);
+    function voteForMultiple(uint256 _voteId, bool _supports, address[] _voters) public voteExists(_voteId) {
+        require(_canParticipateInVote(_voteId, _supports), ERROR_CAN_NOT_VOTE);
 
-        for (uint256 i = 0; i < _voteForList.length; ++i) {
-            address voteFor_ = _voteForList[i];
-            require(_hasEnoughVotingPower(vote_, voteFor_), ERROR_CAN_NOT_VOTE);
-            require(_canVoteFor(msg.sender, voteFor_), ERROR_CAN_NOT_VOTE_FOR);
-            require(!_hasVoted(_voteId, voteFor_), ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE);
-            _vote(_voteId, _supports, voteFor_, true);
+        Vote storage vote_ = votes[_voteId];
+        address msgSender = msg.sender;
+
+        for (uint256 i = 0; i < _voters.length; ++i) {
+            address voter = _voters[i];
+            require(_hasVotingPower(vote_, voter), ERROR_NO_VOTING_POWER);
+            require(_canVoteFor(vote_, msgSender, voter), ERROR_CAN_NOT_VOTE_FOR);
+            _vote(_voteId, _supports, voter, true);
         }
     }
 
@@ -414,8 +409,9 @@ contract Voting is IForwarder, AragonApp {
     * @param _voter address of the voter to check
     * @return True if the given voter can participate in the main phase of a certain vote, false otherwise
     */
-    function canVote(uint256 _voteId, address _voter) external view voteExists(_voteId) returns (bool) {
-        return _canVote(_voteId, _voter);
+    function canVote(uint256 _voteId, address _voter) public view voteExists(_voteId) returns (bool) {
+        Vote storage vote_ = votes[_voteId];
+        return _canParticipateInVote(_voteId, false) && _hasVotingPower(vote_, _voter);
     }
 
     /**
@@ -510,7 +506,7 @@ contract Voting is IForwarder, AragonApp {
 
         emit StartVote(voteId, msg.sender, _metadata);
 
-        if (_castVote && _canVote(voteId, msg.sender)) {
+        if (_castVote && canVote(voteId, msg.sender)) {
             _vote(voteId, true, msg.sender, false);
         }
     }
@@ -608,28 +604,33 @@ contract Voting is IForwarder, AragonApp {
     * @dev Internal function to check if a voter can participate on a vote. It assumes the queried vote exists.
     * @return True if the given voter can participate a certain vote, false otherwise
     */
-    function _canVote(uint256 _voteId, address _voter) internal view returns (bool) {
+    function _canParticipateInVote(uint256 _voteId, bool _supports) internal view returns (bool) {
         Vote storage vote_ = votes[_voteId];
-        return _isVoteOpen(vote_) && _hasEnoughVotingPower(vote_, _voter);
+        return _isVoteOpen(vote_) && _isValidPhaseToVote(vote_, _supports);
     }
 
-    function _canVoteFor(address _delegate, address _voter) internal view returns (bool) {
-        require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
-        require(_voter != address(0), ERROR_ZERO_ADDRESS_PASSED);
+    function _isDelegate(address _delegate, address _voter) internal view returns (bool) {
+        if (_delegate == address(0) || _voter == address(0)) {
+            return false;
+        }
         return delegates[_voter].delegate == _delegate;
     }
 
-    function _isProperPhaseToVote(uint256 _voteId, bool _supports) internal view returns (bool) {
-        return !_supports || _getVotePhase(votes[_voteId]) == VotePhase.Main;
+    function _canVoteFor(Vote storage _vote, address _delegate, address _voter) internal view returns (bool) {
+        return _isDelegate(_delegate, _voter) && !_hasVoted(_vote, _voter);
     }
 
-    function _hasVoted(uint256 _voteId, address _voter) internal view returns (bool) {
-        VoterState state = votes[_voteId].voters[_voter];
+    function _isValidPhaseToVote(Vote storage _vote, bool _supports) internal view returns (bool) {
+        return !_supports || _getVotePhase(_vote) == VotePhase.Main;
+    }
+
+    function _hasVoted(Vote storage _vote, address _voter) internal view returns (bool) {
+        VoterState state = _vote.voters[_voter];
         return state == VoterState.Yea || state == VoterState.Nay;
     }
 
-    function _hasEnoughVotingPower(Vote storage vote_, address _voter) internal view returns (bool) {
-        return token.balanceOfAt(_voter, vote_.snapshotBlock) > 0;
+    function _hasVotingPower(Vote storage _vote, address _voter) internal view returns (bool) {
+        return token.balanceOfAt(_voter, _vote.snapshotBlock) > 0;
     }
 
     /**

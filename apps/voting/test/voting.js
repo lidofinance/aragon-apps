@@ -103,7 +103,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
   })
 
   for (const decimals of [0, 2, 18, 26]) {
-    context(`normal token supply, ${decimals} decimals`, () => {
+      context(`normal token supply, ${decimals} decimals`, () => {
       const neededSupport = pct16(50)
       const minimumAcceptanceQuorum = pct16(20)
 
@@ -361,7 +361,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
         })
 
         it('throws when non-holder votes', async () => {
-          await assertRevert(voting.vote(voteId, true, true, { from: nonHolder }), ERRORS.VOTING_CAN_NOT_VOTE)
+          await assertRevert(voting.vote(voteId, true, true, { from: nonHolder }), ERRORS.VOTING_NO_VOTING_POWER)
         })
 
         it('throws when voting after voting closes', async () => {
@@ -480,7 +480,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
         await voting.vote(voteId, false, true, { from: holder29 })
         await assertRevert(
           voting.voteForMultiple(voteId, false, [holder29, holder51], {from: delegate1}),
-          ERRORS.VOTING_DELEGATE_CANT_OVERWRITE
+          ERRORS.VOTING_CAN_NOT_VOTE_FOR
         )
       })
 
@@ -510,7 +510,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
                 false,
                 holder29,
                 { from: delegate1 }
-            ), ERRORS.VOTING_DELEGATE_CANT_OVERWRITE
+            ), ERRORS.VOTING_CAN_NOT_VOTE_FOR
         )
       })
     })
