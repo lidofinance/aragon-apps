@@ -24,6 +24,7 @@ contract Voting is IForwarder, AragonApp {
 
     uint64 public constant PCT_BASE = 10 ** 18; // 0% = 0; 1% = 10^16; 100% = 10^18
 
+    uint256 private constant UINT_96_MAX = 0xFFFFFFFFFFFFFFFFFFFFFFFF;
     string private constant ERROR_NO_VOTE = "VOTING_NO_VOTE";
     string private constant ERROR_INIT_PCTS = "VOTING_INIT_PCTS";
     string private constant ERROR_CHANGE_SUPPORT_PCTS = "VOTING_CHANGE_SUPPORT_PCTS";
@@ -45,6 +46,7 @@ contract Voting is IForwarder, AragonApp {
     string private constant ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE = "VOTING_DELEGATE_CANT_OVERWRITE";
     string private constant ERROR_CAN_NOT_VOTE_FOR_MULTIPLE = "VOTING_CAN_NOT_VOTE_FOR_MULTIPLE";
     string private constant ERROR_INVALID_OFFSET_OR_COUNT = "VOTING_INVALID_OFFSET_OR_COUNT";
+    string private constant ERROR_MAX_DELEGATED_VOTERS_REACHED = "VOTING_MAX_DELEGATED_VOTERS_REACHED";
 
     enum VoterState { Absent, Yea, Nay, DelegateYea, DelegateNay }
 
@@ -163,6 +165,9 @@ contract Voting is IForwarder, AragonApp {
     }
 
     function _addDelegatedAddressFor(address _delegate, address _voter) internal {
+        uint256 length = delegatedVoters[_delegate].addresses.length;
+        require(length < UINT_96_MAX, ERROR_MAX_DELEGATED_VOTERS_REACHED);
+
         delegatedVoters[_delegate].addresses.push(_voter);
     }
 
