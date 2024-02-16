@@ -124,6 +124,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
         const script = encodeCallScript([action, action, action])
 
         const voteId = createdVoteId(await voting.newVote(script, '', { from: holder51 }))
+        await voting.vote(voteId, true, true, { from: holder51 })
         await voting.mockIncreaseTime(votingDuration + 1)
         await voting.executeVote(voteId)
 
@@ -132,30 +133,26 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
 
       it('execution script can be empty', async () => {
         const voteId = createdVoteId(await voting.newVote(encodeCallScript([]), '', { from: holder51 }))
+        await voting.vote(voteId, true, true, { from: holder51 })
         await voting.mockIncreaseTime(votingDuration + 1)
         await voting.executeVote(voteId)
       })
 
-      it('can create newVote with extended API version', async () => {
-        let voteId = createdVoteId(await voting.methods['newVote(bytes,string,bool,bool)'](encodeCallScript([]), '', false, false, { from: holder51 }))
-        await voting.mockIncreaseTime(votingDuration + 1)
-        await assertRevert(voting.executeVote(voteId), ERRORS.VOTING_CAN_NOT_EXECUTE)
-        assert.equal(await voting.canExecute(voteId), false, 'should be non-executable')
-
-        voteId = createdVoteId(await voting.methods['newVote(bytes,string,bool,bool)'](encodeCallScript([]), '', true, false, { from: holder51 }))
-        await voting.mockIncreaseTime(votingDuration + 1)
-        await voting.executeVote(voteId)
-        assert.equal(await voting.canExecute(voteId), false, 'should be in the executed state')
+      it('check castVote do nothing (deprecated)', async () => {
+        let voteId = createdVoteId(await voting.methods['newVote(bytes,string,bool,bool)'](encodeCallScript([]), '', true, false, { from: holder51 }))
+        assert.equal(await voting.getVoterState(voteId, holder51), VOTER_STATE.ABSENT, 'holder51 should not have voted')
       })
 
       it('check executesIfDecided do nothing (deprecated)', async () => {
         let voteId = createdVoteId(await voting.methods['newVote(bytes,string,bool,bool)'](encodeCallScript([]), '', true, false, { from: holder51 }))
+        await voting.vote(voteId, true, true, { from: holder51 })
         assert.equal(await voting.canExecute(voteId), false, 'should be in the unexecuted state')
         await voting.mockIncreaseTime(votingDuration + 1)
         await voting.executeVote(voteId)
         assert.equal(await voting.canExecute(voteId), false, 'should be in the executed state')
 
         voteId = createdVoteId(await voting.methods['newVote(bytes,string,bool,bool)'](encodeCallScript([]), '', true, true, { from: holder51 }))
+        await voting.vote(voteId, true, true, { from: holder51 })
         assert.equal(await voting.canExecute(voteId), false, 'should be in the unexecuted state')
         await voting.mockIncreaseTime(votingDuration + 1)
         await voting.executeVote(voteId)
