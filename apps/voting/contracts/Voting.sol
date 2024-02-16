@@ -282,7 +282,7 @@ contract Voting is IForwarder, AragonApp {
     * @return voteId Id for newly created vote
     */
     function newVote(bytes _executionScript, string _metadata) external auth(CREATE_VOTES_ROLE) returns (uint256 voteId) {
-        return _newVote(_executionScript, _metadata, true);
+        return _newVote(_executionScript, _metadata);
     }
 
     /**
@@ -290,16 +290,16 @@ contract Voting is IForwarder, AragonApp {
     * @dev  _executesIfDecided was deprecated to introduce a proper lock period between decision and execution.
     * @param _executionScript EVM script to be executed on approval
     * @param _metadata Vote metadata
-    * @param _castVote Whether to also cast newly created vote
+    * @param _castVote_deprecated Whether to also cast newly created vote
     * @param _executesIfDecided_deprecated Whether to also immediately execute newly created vote if decided
     * @return voteId id for newly created vote
     */
-    function newVote(bytes _executionScript, string _metadata, bool _castVote, bool _executesIfDecided_deprecated)
+    function newVote(bytes _executionScript, string _metadata, bool _castVote_deprecated, bool _executesIfDecided_deprecated)
         external
         auth(CREATE_VOTES_ROLE)
         returns (uint256 voteId)
     {
-        return _newVote(_executionScript, _metadata, _castVote);
+        return _newVote(_executionScript, _metadata);
     }
 
     /**
@@ -366,7 +366,7 @@ contract Voting is IForwarder, AragonApp {
     */
     function forward(bytes _evmScript) public {
         require(canForward(msg.sender, _evmScript), ERROR_CAN_NOT_FORWARD);
-        _newVote(_evmScript, "", true);
+        _newVote(_evmScript, "");
     }
 
     /**
@@ -401,7 +401,7 @@ contract Voting is IForwarder, AragonApp {
     * @param _voter address of the voter to check
     * @return True if the given voter can participate in the main phase of a certain vote, false otherwise
     */
-    function canVote(uint256 _voteId, address _voter) public view voteExists(_voteId) returns (bool) {
+    function canVote(uint256 _voteId, address _voter) external view voteExists(_voteId) returns (bool) {
         Vote storage vote_ = votes[_voteId];
         return _canParticipateInVote(_voteId, false) && _hasVotingPower(vote_, _voter);
     }
@@ -481,7 +481,7 @@ contract Voting is IForwarder, AragonApp {
     * @dev Internal function to create a new vote
     * @return voteId id for newly created vote
     */
-    function _newVote(bytes _executionScript, string _metadata, bool _castVote) internal returns (uint256 voteId) {
+    function _newVote(bytes _executionScript, string _metadata) internal returns (uint256 voteId) {
         uint64 snapshotBlock = getBlockNumber64() - 1; // avoid double voting in this very block
         uint256 votingPower = token.totalSupplyAt(snapshotBlock);
         require(votingPower > 0, ERROR_NO_VOTING_POWER);
@@ -497,10 +497,6 @@ contract Voting is IForwarder, AragonApp {
         vote_.executionScript = _executionScript;
 
         emit StartVote(voteId, msg.sender, _metadata);
-
-        if (_castVote && canVote(voteId, msg.sender)) {
-            _vote(voteId, true, msg.sender, false);
-        }
     }
 
     /**
