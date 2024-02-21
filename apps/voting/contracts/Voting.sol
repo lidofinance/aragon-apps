@@ -218,6 +218,15 @@ contract Voting is IForwarder, AragonApp {
         return delegates[_voter].delegate;
     }
 
+    function getVoterStateMultiple(uint256 _voteId, address[] _voters) public view voteExists(_voteId) returns (VoterState[] memory voterStatesList) {
+        uint256 length = _voters.length;
+        voterStatesList = new VoterState[](length);
+        for (uint256 i = 0; i < length; ++i) {
+            voterStatesList[i] = votes[_voteId].voters[_voters[i]];
+        }
+        return voterStatesList;
+    }
+
     /**
     * @notice Change required support to `@formatPct(_supportRequiredPct)`%
     * @param _supportRequiredPct New required support
@@ -360,7 +369,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @notice Creates a vote to execute the desired action, and casts a support vote if possible
+    * @notice Creates a vote to execute the desired action
     * @dev IForwarder interface conformance
     * @param _evmScript Start vote with script
     */
