@@ -606,7 +606,7 @@ contract Voting is IForwarder, AragonApp {
         return _isVoteOpen(vote_) && _isValidPhaseToVote(vote_, _supports);
     }
 
-    function _isDelegate(address _delegate, address _voter) internal view returns (bool) {
+    function _isDelegateFor(address _delegate, address _voter) internal view returns (bool) {
         if (_delegate == address(0) || _voter == address(0)) {
             return false;
         }
@@ -614,7 +614,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     function _canVoteFor(Vote storage _vote, address _delegate, address _voter) internal view returns (bool) {
-        return _isDelegate(_delegate, _voter) && !_hasVoted(_vote, _voter);
+        return _isDelegateFor(_delegate, _voter) && !_hasVoted(_vote, _voter);
     }
 
     function _isValidPhaseToVote(Vote storage _vote, bool _supports) internal view returns (bool) {
