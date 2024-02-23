@@ -169,10 +169,12 @@ contract Voting is IForwarder, AragonApp {
     }
 
     function _removeDelegatedAddressFor(address _delegate, address _voter) internal {
+        uint256 length = delegatedVoters[_delegate].addresses.length;
+        require(length > 0, ERROR_DELEGATE_NOT_SET);
+
         uint96 voterIndex = delegates[_voter].voterIndex;
-        uint256 lastIndex = delegatedVoters[_delegate].addresses.length - 1;
-        address lastVoter = delegatedVoters[_delegate].addresses[lastIndex];
-        if (voterIndex < lastIndex) {
+        address lastVoter = delegatedVoters[_delegate].addresses[length - 1];
+        if (voterIndex < length - 1) {
             delegatedVoters[_delegate].addresses[voterIndex] = lastVoter;
             delegates[lastVoter].voterIndex = voterIndex;
         }
