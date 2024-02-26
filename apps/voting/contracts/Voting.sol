@@ -223,8 +223,9 @@ contract Voting is IForwarder, AragonApp {
     function getVotersStateAtVote(address[] _voters, uint256 _voteId) public view voteExists(_voteId) returns (VoterState[] memory voterStatesList) {
         uint256 length = _voters.length;
         voterStatesList = new VoterState[](length);
+        Vote storage vote_ = votes[_voteId];
         for (uint256 i = 0; i < length; ++i) {
-            voterStatesList[i] = votes[_voteId].voters[_voters[i]];
+            voterStatesList[i] = vote_.voters[_voters[i]];
         }
         return voterStatesList;
     }
