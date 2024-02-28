@@ -129,107 +129,6 @@ contract Voting is IForwarder, AragonApp {
         objectionPhaseTime = _objectionPhaseTime;
     }
 
-    function setDelegate(address _delegate) public {
-        require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
-
-        address msgSender = msg.sender;
-        require(_delegate != msgSender, ERROR_SELF_DELEGATE);
-
-        address prevDelegate = delegates[msgSender].delegate;
-        require(_delegate != prevDelegate, ERROR_DELEGATE_SAME_AS_PREV);
-
-        uint256 votingPower = token.balanceOfAt(msgSender, getBlockNumber64() - 1);
-        require(votingPower > 0, ERROR_NO_VOTING_POWER);
-
-        if (prevDelegate != address(0)) {
-            _removeDelegatedAddressFor(prevDelegate, msgSender);
-        }
-        _addDelegatedAddressFor(_delegate, msgSender);
-
-        emit DelegateSet(msgSender, prevDelegate, _delegate);
-    }
-
-    function removeDelegate() public {
-        address msgSender = msg.sender;
-        address prevDelegate = delegates[msgSender].delegate;
-        require(prevDelegate != address(0), ERROR_DELEGATE_NOT_SET);
-
-        _removeDelegatedAddressFor(prevDelegate, msgSender);
-        delete delegates[msgSender];
-
-        emit DelegateSet(msgSender, prevDelegate, address(0));
-    }
-
-    function _addDelegatedAddressFor(address _delegate, address _voter) internal {
-        uint256 length = delegatedVoters[_delegate].addresses.length;
-        require(length < UINT_96_MAX, ERROR_MAX_DELEGATED_VOTERS_REACHED);
-
-        delegatedVoters[_delegate].addresses.push(_voter);
-        delegates[_voter] = Delegate(_delegate, uint96(delegatedVoters[_delegate].addresses.length.sub(1)));
-    }
-
-    function _removeDelegatedAddressFor(address _delegate, address _voter) internal {
-        uint256 length = delegatedVoters[_delegate].addresses.length;
-        require(length > 0, ERROR_DELEGATE_NOT_SET);
-
-        uint96 voterIndex = delegates[_voter].voterIndex;
-        address lastVoter = delegatedVoters[_delegate].addresses[length - 1];
-        if (voterIndex < length - 1) {
-            delegatedVoters[_delegate].addresses[voterIndex] = lastVoter;
-            delegates[lastVoter].voterIndex = voterIndex;
-        }
-        delegatedVoters[_delegate].addresses.length--;
-    }
-
-    function _getDelegatedVotersAt(address _delegate, uint256 _offset, uint256 _limit, uint256 _blockNumber) internal view returns (address[] memory votersList, uint256[] memory votingPowerList) {
-        require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
-        require(_limit > 0, ERROR_INVALID_LIMIT);
-        uint256 length = delegatedVoters[_delegate].addresses.length;
-        if (length == 0) {
-            return (new address[](0), new uint256[](0));
-        }
-        require(_offset < length, ERROR_INVALID_OFFSET);
-        
-        uint256 returnCount = _offset.add(_limit) > length ? length.sub(_offset) : _limit;
-        votersList = new address[](returnCount);
-        votingPowerList = new uint256[](returnCount);
-        for (uint256 i = 0; i < returnCount; ++i) {
-            address voter = delegatedVoters[_delegate].addresses[_offset + i];
-            votersList[i] = voter;
-            votingPowerList[i] = token.balanceOfAt(voter, _blockNumber);
-        }
-        return (votersList, votingPowerList);
-    }
-
-    function getDelegatedVoters(address _delegate, uint256 _offset, uint256 _limit) public view returns (address[] memory, uint256[] memory) {
-        return _getDelegatedVotersAt(_delegate, _offset, _limit, getBlockNumber64());
-    }
-
-    function getDelegatedVotersAtVote(address _delegate, uint256 _offset, uint256 _limit, uint256 _voteId) public view voteExists(_voteId) returns (address[] memory, uint256[] memory) {
-        Vote storage vote_ = votes[_voteId];
-        return _getDelegatedVotersAt(_delegate, _offset, _limit, vote_.snapshotBlock);
-    }
-
-    function getDelegatedVotersCount(address _delegate) public view returns (uint256) {
-        require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
-        return delegatedVoters[_delegate].addresses.length;
-    }
-
-    function getDelegate(address _voter) public view returns (address) {
-        require(_voter != address(0), ERROR_ZERO_ADDRESS_PASSED);
-        return delegates[_voter].delegate;
-    }
-
-    function getVotersStateAtVote(address[] _voters, uint256 _voteId) public view voteExists(_voteId) returns (VoterState[] memory voterStatesList) {
-        uint256 length = _voters.length;
-        voterStatesList = new VoterState[](length);
-        Vote storage vote_ = votes[_voteId];
-        for (uint256 i = 0; i < length; ++i) {
-            voterStatesList[i] = vote_.voters[_voters[i]];
-        }
-        return voterStatesList;
-    }
-
     /**
     * @notice Change required support to `@formatPct(_supportRequiredPct)`%
     * @param _supportRequiredPct New required support
@@ -329,12 +228,57 @@ contract Voting is IForwarder, AragonApp {
         _vote(_voteId, _supports, msg.sender, false);
     }
 
-    function voteFor(uint256 _voteId, bool _supports, address _voter) external voteExists(_voteId) {
-        address[] memory voters = new address[](1);
-        voters[0] = _voter;
-        voteForMultiple(_voteId, _supports, voters);
+    /**
+    * @notice Execute vote #`_voteId`
+    * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
+    *      created via `newVote(),` which requires initialization
+    * @param _voteId Id for vote
+    */
+    function executeVote(uint256 _voteId) external voteExists(_voteId) {
+        _executeVote(_voteId);
     }
 
+    /**
+    * @notice Assign `_delegate` as the delegate for the sender
+    * @param _delegate address to delegate to
+    */
+    function setDelegate(address _delegate) public {
+        require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
+
+        address msgSender = msg.sender;
+        require(_delegate != msgSender, ERROR_SELF_DELEGATE);
+
+        address prevDelegate = delegates[msgSender].delegate;
+        require(_delegate != prevDelegate, ERROR_DELEGATE_SAME_AS_PREV);
+
+        uint256 votingPower = token.balanceOfAt(msgSender, getBlockNumber64() - 1);
+        require(votingPower > 0, ERROR_NO_VOTING_POWER);
+
+        if (prevDelegate != address(0)) {
+            _removeDelegatedAddressFor(prevDelegate, msgSender);
+        }
+        _addDelegatedAddressFor(_delegate, msgSender);
+
+        emit DelegateSet(msgSender, prevDelegate, _delegate);
+    }
+
+    function removeDelegate() public {
+        address msgSender = msg.sender;
+        address prevDelegate = delegates[msgSender].delegate;
+        require(prevDelegate != address(0), ERROR_DELEGATE_NOT_SET);
+
+        _removeDelegatedAddressFor(prevDelegate, msgSender);
+        delete delegates[msgSender];
+
+        emit DelegateSet(msgSender, prevDelegate, address(0));
+    }
+
+    /**
+     * @notice Vote `_supports ? 'yes' : 'no'` in vote #`_voteId` on behalf of the `_voters` list
+     * @param _voteId Id for vote
+     * @param _supports Whether the delegate supports the vote
+     * @param _voters list of voters
+     */
     function voteForMultiple(uint256 _voteId, bool _supports, address[] _voters) public voteExists(_voteId) {
         require(_canParticipateInVote(_voteId, _supports), ERROR_CAN_NOT_VOTE);
 
@@ -349,15 +293,16 @@ contract Voting is IForwarder, AragonApp {
         }
     }
 
-
     /**
-    * @notice Execute vote #`_voteId`
-    * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
-    *      created via `newVote(),` which requires initialization
-    * @param _voteId Id for vote
-    */
-    function executeVote(uint256 _voteId) external voteExists(_voteId) {
-        _executeVote(_voteId);
+     * @notice Vote `_supports ? 'yes' : 'no'` in vote #`_voteId` on behalf of the `_voter`
+     * @param _voteId Id for vote
+     * @param _supports Whether the delegate supports the vote
+     * @param _voter address of the voter
+     */
+    function voteFor(uint256 _voteId, bool _supports, address _voter) external voteExists(_voteId) {
+        address[] memory voters = new address[](1);
+        voters[0] = _voter;
+        voteForMultiple(_voteId, _supports, voters);
     }
 
     // Forwarding fns
@@ -487,6 +432,65 @@ contract Voting is IForwarder, AragonApp {
         return votes[_voteId].voters[_voter];
     }
 
+    /**
+     * @notice Return the sliced list of delegated voters for `_delegate` and their voting power at the current block
+     * @param _delegate the address of the delegate
+     * @param _offset the number of delegated voters from the start of the list to skip
+     * @param _limit the number of delegated voters to return
+     * @return the array of delegated voters
+     * @return the array of voting power of delegated voters
+     */
+    function getDelegatedVoters(address _delegate, uint256 _offset, uint256 _limit) public view returns (address[] memory, uint256[] memory) {
+        return _getDelegatedVotersAt(_delegate, _offset, _limit, getBlockNumber64());
+    }
+
+    /**
+     * @notice Return the sliced list of delegated voters for `_delegate` and their voting power at the `_voteId` snapshot block
+     * @param _delegate the address of the delegate
+     * @param _offset the number of delegated voters from the start of the list to skip
+     * @param _limit the number of delegated voters to return
+     * @return the array of delegated voters
+     * @return the array of voting power of delegated voters
+     */
+    function getDelegatedVotersAtVote(address _delegate, uint256 _offset, uint256 _limit, uint256 _voteId) public view voteExists(_voteId) returns (address[] memory, uint256[] memory) {
+        Vote storage vote_ = votes[_voteId];
+        return _getDelegatedVotersAt(_delegate, _offset, _limit, vote_.snapshotBlock);
+    }
+
+    /**
+    * @dev Return the number of delegated voters for the `_delegate`
+    * @param _delegate address of the delegate
+    * @return the number of delegated voters
+    */
+    function getDelegatedVotersCount(address _delegate) public view returns (uint256) {
+        require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
+        return delegatedVoters[_delegate].addresses.length;
+    }
+
+    /**
+     * @notice Return the delegate address assigned to the `_voter`
+     * @param _voter the address of the voter
+     */
+    function getDelegate(address _voter) public view returns (address) {
+        require(_voter != address(0), ERROR_ZERO_ADDRESS_PASSED);
+        return delegates[_voter].delegate;
+    }
+
+    /**
+     * @notice Return the list of `VoterState` for the `_voters` for the vote #`_voteId`
+     * @param _voters the list of voters
+     * @param _voteId Vote identifier
+     */
+    function getVotersStateAtVote(address[] _voters, uint256 _voteId) public view voteExists(_voteId) returns (VoterState[] memory voterStatesList) {
+        uint256 length = _voters.length;
+        voterStatesList = new VoterState[](length);
+        Vote storage vote_ = votes[_voteId];
+        for (uint256 i = 0; i < length; ++i) {
+            voterStatesList[i] = vote_.voters[_voters[i]];
+        }
+        return voterStatesList;
+    }
+
     // Internal fns
 
     /**
@@ -568,6 +572,65 @@ contract Voting is IForwarder, AragonApp {
         runScript(vote_.executionScript, input, new address[](0));
 
         emit ExecuteVote(_voteId);
+    }
+
+    /**
+     * @dev internal function to add the `_voter` to the list of delegated voters for the `_delegate` and update the delegate for the `_voter`
+     * @param _delegate address of the delegate
+     * @param _voter address of the voter
+     */
+    function _addDelegatedAddressFor(address _delegate, address _voter) internal {
+        uint256 length = delegatedVoters[_delegate].addresses.length;
+        require(length < UINT_96_MAX, ERROR_MAX_DELEGATED_VOTERS_REACHED);
+
+        delegatedVoters[_delegate].addresses.push(_voter);
+        delegates[_voter] = Delegate(_delegate, uint96(delegatedVoters[_delegate].addresses.length.sub(1)));
+    }
+
+    /**
+     * @dev internal function to remove  the `_voter` from the list of delegated voters for the `_delegate`
+     * @param _delegate address of the delegate
+     * @param _voter address of the voter
+     */
+    function _removeDelegatedAddressFor(address _delegate, address _voter) internal {
+        uint256 length = delegatedVoters[_delegate].addresses.length;
+        require(length > 0, ERROR_DELEGATE_NOT_SET);
+
+        uint96 voterIndex = delegates[_voter].voterIndex;
+        address lastVoter = delegatedVoters[_delegate].addresses[length - 1];
+        if (voterIndex < length - 1) {
+            delegatedVoters[_delegate].addresses[voterIndex] = lastVoter;
+            delegates[lastVoter].voterIndex = voterIndex;
+        }
+        delegatedVoters[_delegate].addresses.length--;
+    }
+
+    /**
+     * @notice Return the sliced list of delegated voters for `_delegate` and their voting power at the `_blockNumber`
+     * @param _delegate the address of the delegate
+     * @param _offset the number of delegated voters from the start of the list to skip
+     * @param _limit the number of delegated voters to return
+     * @return the array of delegated voters
+     * @return the array of voting power of delegated voters
+     */
+    function _getDelegatedVotersAt(address _delegate, uint256 _offset, uint256 _limit, uint256 _blockNumber) internal view returns (address[] memory votersList, uint256[] memory votingPowerList) {
+        require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
+        require(_limit > 0, ERROR_INVALID_LIMIT);
+        uint256 length = delegatedVoters[_delegate].addresses.length;
+        if (length == 0) {
+            return (new address[](0), new uint256[](0));
+        }
+        require(_offset < length, ERROR_INVALID_OFFSET);
+        
+        uint256 returnCount = _offset.add(_limit) > length ? length.sub(_offset) : _limit;
+        votersList = new address[](returnCount);
+        votingPowerList = new uint256[](returnCount);
+        for (uint256 i = 0; i < returnCount; ++i) {
+            address voter = delegatedVoters[_delegate].addresses[_offset + i];
+            votersList[i] = voter;
+            votingPowerList[i] = token.balanceOfAt(voter, _blockNumber);
+        }
+        return (votersList, votingPowerList);
     }
 
     /**
