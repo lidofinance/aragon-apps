@@ -96,7 +96,8 @@ contract Voting is IForwarder, AragonApp {
     event ChangeMinQuorum(uint64 minAcceptQuorumPct);
     event ChangeVoteTime(uint64 voteTime);
     event ChangeObjectionPhaseTime(uint64 objectionPhaseTime);
-    event DelegateSet(address indexed voter, address indexed previousDelegate, address indexed newDelegate);
+    event SetDelegate(address indexed voter, address indexed delegate);
+    event RemoveDelegate(address indexed voter, address indexed delegate);
     event CastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, address indexed voter, bool supports, uint256 stake);
 
     modifier voteExists(uint256 _voteId) {
@@ -259,7 +260,7 @@ contract Voting is IForwarder, AragonApp {
         }
         _addDelegatedAddressFor(_delegate, msgSender);
 
-        emit DelegateSet(msgSender, prevDelegate, _delegate);
+        emit SetDelegate(msgSender, _delegate);
     }
 
     function removeDelegate() public {
@@ -270,7 +271,7 @@ contract Voting is IForwarder, AragonApp {
         _removeDelegatedAddressFor(prevDelegate, msgSender);
         delete delegates[msgSender];
 
-        emit DelegateSet(msgSender, prevDelegate, address(0));
+        emit RemoveDelegate(msgSender, prevDelegate);
     }
 
     /**
@@ -621,7 +622,7 @@ contract Voting is IForwarder, AragonApp {
             return (new address[](0), new uint256[](0));
         }
         require(_offset < length, ERROR_INVALID_OFFSET);
-        
+
         uint256 returnCount = _offset.add(_limit) > length ? length.sub(_offset) : _limit;
         votersList = new address[](returnCount);
         votingPowerList = new uint256[](returnCount);

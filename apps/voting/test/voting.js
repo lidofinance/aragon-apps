@@ -915,10 +915,10 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
 
     it('voter can set delegate', async () => {
       const tx = await voting.setDelegate(delegate1, {from: holder29})
-      assertEvent(tx, 'DelegateSet', {
-        expectedArgs: {voter: holder29, previousDelegate: ZERO_ADDRESS, newDelegate: delegate1}
+      assertEvent(tx, 'SetDelegate', {
+        expectedArgs: {voter: holder29, delegate: delegate1}
       })
-      assertAmountOfEvents(tx, 'DelegateSet', {expectedAmount: 1})
+      assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
 
       const delegate = await voting.getDelegate(holder29)
       assert.equal(delegate, delegate1, 'holder29 should have delegate1 as a delegate')
@@ -931,10 +931,10 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       await voting.setDelegate(delegate1, {from: holder29})
 
       const tx = await voting.removeDelegate({from: holder29})
-      assertEvent(tx, 'DelegateSet', {
-        expectedArgs: {voter: holder29, previousDelegate: delegate1, newDelegate: ZERO_ADDRESS}
+      assertEvent(tx, 'RemoveDelegate', {
+        expectedArgs: {voter: holder29, delegate: delegate1}
       })
-      assertAmountOfEvents(tx, 'DelegateSet', {expectedAmount: 1})
+      assertAmountOfEvents(tx, 'RemoveDelegate', {expectedAmount: 1})
       const delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, 1))[0]
       assertArraysEqualAsSets(delegatedVoters, [], 'delegate1 should not be a delegate of anyone')
     })
@@ -946,15 +946,15 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
 
 
       const tx1 = await voting.removeDelegate({from: holder29})
-      assertEvent(tx1, 'DelegateSet', {
-        expectedArgs: {voter: holder29, previousDelegate: delegate1, newDelegate: ZERO_ADDRESS}
+      assertEvent(tx1, 'RemoveDelegate', {
+        expectedArgs: {voter: holder29, delegate: delegate1}
       })
-      assertAmountOfEvents(tx1, 'DelegateSet', {expectedAmount: 1})
+      assertAmountOfEvents(tx1, 'RemoveDelegate', {expectedAmount: 1})
       const tx2 = await voting.removeDelegate({from: holder51})
-      assertEvent(tx2, 'DelegateSet', {
-        expectedArgs: {voter: holder51, previousDelegate: delegate1, newDelegate: ZERO_ADDRESS}
+      assertEvent(tx2, 'RemoveDelegate', {
+        expectedArgs: {voter: holder51, delegate: delegate1}
       })
-      assertAmountOfEvents(tx2, 'DelegateSet', {expectedAmount: 1})
+      assertAmountOfEvents(tx2, 'RemoveDelegate', {expectedAmount: 1})
       const delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, 1))[0]
       assertArraysEqualAsSets(delegatedVoters, [holder20], 'delegate1 have only holder20 as a delegated voter')
     })
@@ -975,10 +975,10 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       await voting.setDelegate(delegate1, {from: holder29})
 
       const tx = await voting.setDelegate(delegate1, {from: holder51})
-      assertEvent(tx, 'DelegateSet', {
-        expectedArgs: {voter: holder51, previousDelegate: ZERO_ADDRESS, newDelegate: delegate1}
+      assertEvent(tx, 'SetDelegate', {
+        expectedArgs: {voter: holder51, delegate: delegate1}
       })
-      assertAmountOfEvents(tx, 'DelegateSet', {expectedAmount: 1})
+      assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
 
       const delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, 2))[0]
       assertArraysEqualAsSets(delegatedVoters, [holder29, holder51], 'delegate1 should be a delegate of holder29 and holder51')
