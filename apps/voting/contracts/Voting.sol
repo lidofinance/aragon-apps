@@ -99,6 +99,7 @@ contract Voting is IForwarder, AragonApp {
     event SetDelegate(address indexed voter, address indexed delegate);
     event RemoveDelegate(address indexed voter, address indexed delegate);
     event CastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, address indexed voter, bool supports, uint256 stake);
+    event SkipCastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, address indexed voter, uint256 stake);
 
     modifier voteExists(uint256 _voteId) {
         require(_voteId < votesLength, ERROR_NO_VOTE);
@@ -289,8 +290,12 @@ contract Voting is IForwarder, AragonApp {
         for (uint256 i = 0; i < _voters.length; ++i) {
             address voter = _voters[i];
             require(_hasVotingPower(vote_, voter), ERROR_NO_VOTING_POWER);
-            require(_canVoteFor(vote_, msgSender, voter), ERROR_CAN_NOT_VOTE_FOR);
-            _vote(_voteId, _supports, voter, true);
+            if (_canVoteFor(vote_, msgSender, voter)) {
+                _vote(_voteId, _supports, voter, true);
+            } else {
+                uint256 votingPower = token.balanceOfAt(voter, vote_.snapshotBlock);
+                emit SkipCastVoteAsDelegate(_voteId, msgSender, voter, votingPower);
+            }
         }
     }
 
