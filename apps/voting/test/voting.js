@@ -506,14 +506,14 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
         await voting.voteFor(voteId, false, holder29, {from: delegate1})
         await voting.vote(voteId, true, true, {from: holder29})
 
-        await assertRevert(
-            voting.voteFor(
-                voteId,
-                false,
-                holder29,
-                { from: delegate1 }
-            ), ERRORS.VOTING_CAN_NOT_VOTE_FOR
-        )
+
+       const tx = await voting.voteFor(voteId, false, holder29, {from: delegate1})
+
+       assertEvent(tx, 'SkipCastVoteAsDelegate', {expectedArgs: {voteId: voteId, delegate: delegate1, voter: holder29, stake: bigExp(29, decimals)}})
+       assertAmountOfEvents(tx, 'SkipCastVoteAsDelegate', {expectedAmount: 1})
+
+       assert.equal(await voting.getVoterState(voteId, holder29), VOTER_STATE.YEA, `holder29's vote should not have been overwritten`)
+
       })
     })
   }

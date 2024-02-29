@@ -38,7 +38,6 @@ contract Voting is IForwarder, AragonApp {
     string private constant ERROR_CHANGE_VOTE_TIME = "VOTING_VOTE_TIME_TOO_SMALL";
     string private constant ERROR_CHANGE_OBJECTION_TIME = "VOTING_OBJ_TIME_TOO_BIG";
     string private constant ERROR_INIT_OBJ_TIME_TOO_BIG = "VOTING_INIT_OBJ_TIME_TOO_BIG";
-    string private constant ERROR_CAN_NOT_VOTE_FOR = "VOTING_CAN_NOT_VOTE_FOR";
     string private constant ERROR_ZERO_ADDRESS_PASSED = "VOTING_ZERO_ADDRESS_PASSED";
     string private constant ERROR_DELEGATE_NOT_SET = "VOTING_DELEGATE_NOT_SET";
     string private constant ERROR_SELF_DELEGATE = "VOTING_SELF_DELEGATE";
