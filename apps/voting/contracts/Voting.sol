@@ -38,6 +38,7 @@ contract Voting is IForwarder, AragonApp {
     string private constant ERROR_CHANGE_VOTE_TIME = "VOTING_VOTE_TIME_TOO_SMALL";
     string private constant ERROR_CHANGE_OBJECTION_TIME = "VOTING_OBJ_TIME_TOO_BIG";
     string private constant ERROR_INIT_OBJ_TIME_TOO_BIG = "VOTING_INIT_OBJ_TIME_TOO_BIG";
+    string private constant ERROR_CAN_NOT_VOTE_FOR = "VOTING_CAN_NOT_VOTE_FOR";
     string private constant ERROR_ZERO_ADDRESS_PASSED = "VOTING_ZERO_ADDRESS_PASSED";
     string private constant ERROR_DELEGATE_NOT_SET = "VOTING_DELEGATE_NOT_SET";
     string private constant ERROR_SELF_DELEGATE = "VOTING_SELF_DELEGATE";
@@ -98,7 +99,6 @@ contract Voting is IForwarder, AragonApp {
     event SetDelegate(address indexed voter, address indexed delegate);
     event RemoveDelegate(address indexed voter, address indexed delegate);
     event CastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, address indexed voter, bool supports, uint256 stake);
-    event SkipCastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, address indexed voter, uint256 stake);
 
     modifier voteExists(uint256 _voteId) {
         require(_voteId < votesLength, ERROR_NO_VOTE);
@@ -285,17 +285,18 @@ contract Voting is IForwarder, AragonApp {
 
         Vote storage vote_ = votes[_voteId];
         address msgSender = msg.sender;
+        bool hasManagedToVote = false;
 
         for (uint256 i = 0; i < _voters.length; ++i) {
             address voter = _voters[i];
             require(_hasVotingPower(vote_, voter), ERROR_NO_VOTING_POWER);
             if (_canVoteFor(vote_, msgSender, voter)) {
                 _vote(_voteId, _supports, voter, true);
-            } else {
-                uint256 votingPower = token.balanceOfAt(voter, vote_.snapshotBlock);
-                emit SkipCastVoteAsDelegate(_voteId, msgSender, voter, votingPower);
+                hasManagedToVote = true;
             }
         }
+
+        require(hasManagedToVote, ERROR_CAN_NOT_VOTE_FOR);
     }
 
     /**
