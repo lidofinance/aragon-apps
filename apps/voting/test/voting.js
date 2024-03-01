@@ -473,12 +473,20 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
         assert.equal(voterState51, VOTER_STATE.DELEGATE_NAY, 'holder51 should have delegate nay voter status')
       })
 
-      it(`delegate can't vote for both voters if one has previously voted`, async () => {
+      it(`revert if both voters has voted before`, async () => {
         await voting.vote(voteId, false, true, { from: holder29 })
+        await voting.vote(voteId, false, true, { from: holder51 })
         await assertRevert(
           voting.voteForMultiple(voteId, false, [holder29, holder51], {from: delegate1}),
           ERRORS.VOTING_CAN_NOT_VOTE_FOR
         )
+      })
+
+      it(`delegate can vote for one of the two if the other one has voted before`, async () => {
+        await voting.vote(voteId, false, true, { from: holder51 })
+        const tx = await voting.voteForMultiple(voteId, false, [holder29, holder51], {from: delegate1})
+        assertEvent(tx, 'CastVoteAsDelegate', {expectedArgs: {voteId: voteId, delegate: delegate1, voter: holder29, supports: false}})
+        assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
       })
 
       it(`voter can overwrite delegate's vote`, async () => {
