@@ -12,13 +12,12 @@ const ExecutionTarget = artifacts.require('ExecutionTarget')
 
 const createdVoteId = receipt => getEventArgument(receipt, 'StartVote', 'voteId')
 
-const VOTER_STATE = ['ABSENT', 'YEA', 'NAY', 'MANAGER_YEA', 'MANAGER_NAY'].reduce((state, key, index) => {
+const VOTER_STATE = ['ABSENT', 'YEA', 'NAY', 'DELEGATE_YEA', 'DELEGATE_NAY'].reduce((state, key, index) => {
   state[key] = index;
   return state;
 }, {})
 
-
-contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, manager1, manager2, nonHolder]) => {
+contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, delegate1, delegate2, nonHolder]) => {
   let votingBase, voting, token, executionTarget, aclP
   let CREATE_VOTES_ROLE, MODIFY_SUPPORT_ROLE, MODIFY_QUORUM_ROLE, UNSAFELY_MODIFY_VOTE_TIME_ROLE
 
@@ -427,8 +426,8 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, m
         await token.generateTokens(holder29, bigExp(29, decimals))
         await token.generateTokens(holder51, bigExp(51, decimals))
         await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, votingDuration, 0)
-        await voting.setVotingManager(manager1, {from: holder29})
-        await voting.setVotingManager(manager1, {from: holder51})
+        await voting.setDelegate(delegate1, {from: holder29})
+        await voting.setDelegate(delegate1, {from: holder51})
 
         executionTarget = await ExecutionTarget.new()
 
@@ -442,8 +441,8 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, m
       })
 
 
-      it('manager can vote for holder', async () => {
-        const tx = await voting.voteFor(voteId, false, holder29, {from: manager1})
+      it('delegate can vote for voter', async () => {
+        const tx = await voting.voteFor(voteId, false, holder29, {from: delegate1})
         assertEvent(tx, 'CastVote', {expectedArgs: {voteId: voteId, voter: holder29, supports: false}})
         assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
         assertAmountOfEvents(tx, 'CastObjection', {expectedAmount: 0})
@@ -452,11 +451,11 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, m
         const voterState = await voting.getVoterState(voteId, holder29)
 
         assertBn(state[7], bigExp(29, decimals), 'nay vote should have been counted')
-        assert.equal(voterState, VOTER_STATE.MANAGER_NAY, 'holder29 should have manager nay voter status')
+        assert.equal(voterState, VOTER_STATE.DELEGATE_NAY, 'holder29 should have delegate nay voter status')
       })
 
-      it('manager can vote for both holders', async () => {
-        const tx = await voting.voteForMultiple(voteId, false, [holder29, holder51], {from: manager1})
+      it('delegate can vote for both voters', async () => {
+        const tx = await voting.voteForMultiple(voteId, false, [holder29, holder51], {from: delegate1})
         assertEvent(tx, 'CastVote', {expectedArgs: {voteId: voteId, voter: holder29, supports: false}})
         assertEvent(tx, 'CastVote', {index: 1, expectedArgs: {voteId: voteId, voter: holder51, supports: false}})
         assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 2})
@@ -466,14 +465,14 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, m
         assertBn(state[7], bigExp(80, decimals), 'nay vote should have been counted')
 
         const voterState29 = await voting.getVoterState(voteId, holder29)
-        assert.equal(voterState29, VOTER_STATE.MANAGER_NAY, 'holder29 should have manager nay voter status')
+        assert.equal(voterState29, VOTER_STATE.DELEGATE_NAY, 'holder29 should have delegate nay voter status')
 
         const voterState51 = await voting.getVoterState(voteId, holder51)
-        assert.equal(voterState51, VOTER_STATE.MANAGER_NAY, 'holder51 should have manager nay voter status')
+        assert.equal(voterState51, VOTER_STATE.DELEGATE_NAY, 'holder51 should have delegate nay voter status')
       })
 
-      it(`holder can overwrite manager's vote`, async () => {
-        await voting.voteFor(voteId, false, holder29, {from: manager1})
+      it(`voter can overwrite delegate's vote`, async () => {
+        await voting.voteFor(voteId, false, holder29, {from: delegate1})
 
         const tx = await voting.vote(voteId, true, true, {from: holder29})
         assertEvent(tx, 'CastVote', {expectedArgs: {voteId: voteId, voter: holder29, supports: true}})
@@ -488,8 +487,8 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, m
         assert.equal(voterState29, VOTER_STATE.YEA, 'holder29 should have yea voter status')
       })
 
-      it(`manager can't overwrite holder's vote`, async () => {
-        await voting.voteFor(voteId, false, holder29, {from: manager1})
+      it(`delegate can't overwrite voter's vote`, async () => {
+        await voting.voteFor(voteId, false, holder29, {from: delegate1})
         await voting.vote(voteId, true, true, {from: holder29})
 
         await assertRevert(
@@ -497,8 +496,8 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, m
                 voteId,
                 false,
                 holder29,
-                { from: manager1 }
-            ), ERRORS.VOTING_MGR_CANT_OVERWRITE
+                { from: delegate1 }
+            ), ERRORS.VOTING_DELEGATE_CANT_OVERWRITE
         )
       })
     })
@@ -888,7 +887,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, m
     })
   })
 
-  context('voting manager', () => {
+  context('voting delegate', () => {
     const neededSupport = pct16(50)
     const minimumAcceptanceQuorum = pct16(20)
     const decimals = 18
@@ -904,41 +903,41 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, m
       executionTarget = await ExecutionTarget.new()
     })
 
-    it('holder can set voting manager', async () => {
-      const tx = await voting.setVotingManager(manager1, {from: holder29})
-      assertEvent(tx, 'ManagerSet', {
-        expectedArgs: {holder: holder29, previousVotingManager: ZERO_ADDRESS, newVotingManager: manager1}
+    it('voter can set delegate', async () => {
+      const tx = await voting.setDelegate(delegate1, {from: holder29})
+      assertEvent(tx, 'DelegateSet', {
+        expectedArgs: {voter: holder29, previousDelegate: ZERO_ADDRESS, newDelegate: delegate1}
       })
-      assertAmountOfEvents(tx, 'ManagerSet', {expectedAmount: 1})
+      assertAmountOfEvents(tx, 'DelegateSet', {expectedAmount: 1})
 
-      const manager = await voting.getVotingManager(holder29)
-      assert.equal(manager, manager1, 'holder29 should have manager1 as a voting manager')
+      const delegate = await voting.getDelegate(holder29)
+      assert.equal(delegate, delegate1, 'holder29 should have delegate1 as a delegate')
 
-      const managedHolders = await voting.getManagedVoters(manager1)
-      assertArraysEqualAsSets(managedHolders, [holder29], 'manager1 should manage holder29')
+      const delegatedVoters = await voting.getDelegatedVoters(delegate1)
+      assertArraysEqualAsSets(delegatedVoters, [holder29], 'delegate1 should be a delegate of holder29')
     })
 
-    it('holder can remove voting managers', async () => {
-      await voting.setVotingManager(manager1, {from: holder29})
+    it('voter can remove delegates', async () => {
+      await voting.setDelegate(delegate1, {from: holder29})
 
-      const tx = await voting.removeVotingManager({from: holder29})
-      assertEvent(tx, 'ManagerSet', {
-        expectedArgs: {holder: holder29, previousVotingManager: manager1, newVotingManager: ZERO_ADDRESS}
+      const tx = await voting.removeDelegate({from: holder29})
+      assertEvent(tx, 'DelegateSet', {
+        expectedArgs: {voter: holder29, previousDelegate: delegate1, newDelegate: ZERO_ADDRESS}
       })
-      assertAmountOfEvents(tx, 'ManagerSet', {expectedAmount: 1})
+      assertAmountOfEvents(tx, 'DelegateSet', {expectedAmount: 1})
     })
 
-    it('manager can manage several holders', async () => {
-      await voting.setVotingManager(manager1, {from: holder29})
+    it('delegate can manage several voters', async () => {
+      await voting.setDelegate(delegate1, {from: holder29})
 
-      const tx = await voting.setVotingManager(manager1, {from: holder51})
-      assertEvent(tx, 'ManagerSet', {
-        expectedArgs: {holder: holder51, previousVotingManager: ZERO_ADDRESS, newVotingManager: manager1}
+      const tx = await voting.setDelegate(delegate1, {from: holder51})
+      assertEvent(tx, 'DelegateSet', {
+        expectedArgs: {voter: holder51, previousDelegate: ZERO_ADDRESS, newDelegate: delegate1}
       })
-      assertAmountOfEvents(tx, 'ManagerSet', {expectedAmount: 1})
+      assertAmountOfEvents(tx, 'DelegateSet', {expectedAmount: 1})
 
-      const managedHolders = await voting.getManagedVoters(manager1)
-      assertArraysEqualAsSets(managedHolders, [holder29, holder51], 'manager1 should manage holder29 and holder51')
+      const delegatedVoters = await voting.getDelegatedVoters(delegate1)
+      assertArraysEqualAsSets(delegatedVoters, [holder29, holder51], 'delegate1 should be a delegate of holder29 and holder51')
     })
   })
 })

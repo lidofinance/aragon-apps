@@ -23,7 +23,7 @@ contract Voting is IForwarder, AragonApp {
     bytes32 public constant UNSAFELY_MODIFY_VOTE_TIME_ROLE = keccak256("UNSAFELY_MODIFY_VOTE_TIME_ROLE");
 
     uint64 public constant PCT_BASE = 10 ** 18; // 0% = 0; 1% = 10^16; 100% = 10^18
-    uint64 public constant MAX_HOLDERS_PER_MANAGER = 1024; // some reasonable number to mitigate unbound loop issue
+    uint64 public constant MAX_VOTERS_PER_DELEGATE = 1024; // some reasonable number to mitigate unbound loop issue
 
     string private constant ERROR_NO_VOTE = "VOTING_NO_VOTE";
     string private constant ERROR_INIT_PCTS = "VOTING_INIT_PCTS";
@@ -40,13 +40,13 @@ contract Voting is IForwarder, AragonApp {
     string private constant ERROR_INIT_OBJ_TIME_TOO_BIG = "VOTING_INIT_OBJ_TIME_TOO_BIG";
     string private constant ERROR_CAN_NOT_VOTE_FOR = "VOTING_CAN_NOT_VOTE_FOR";
     string private constant ERROR_ZERO_ADDRESS_PASSED = "VOTING_ZERO_ADDRESS_PASSED";
-    string private constant ERROR_MANAGER_NOT_SET = "VOTING_MANAGER_NOT_SET";
-    string private constant ERROR_SELF_MANAGER = "VOTING_SELF_MANAGER";
-    string private constant ERROR_MANAGER_SAME_AS_PREV = "VOTING_MANAGER_SAME_AS_PREV";
-    string private constant ERROR_MAX_MANAGED_VOTERS_REACHED = "VOTING_MAX_MANAGED_VOTERS_REACHED";
-    string private constant ERROR_MANAGER_CANNOT_OVERWRITE_VOTE = "VOTING_MGR_CANT_OVERWRITE";
+    string private constant ERROR_DELEGATE_NOT_SET = "VOTING_DELEGATE_NOT_SET";
+    string private constant ERROR_SELF_DELEGATE = "VOTING_SELF_DELEGATE";
+    string private constant ERROR_DELEGATE_SAME_AS_PREV = "VOTING_DELEGATE_SAME_AS_PREV";
+    string private constant ERROR_MAX_DELEGATED_VOTERS_REACHED = "VOTING_MAX_DELEGATED_VOTERS_REACHED";
+    string private constant ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE = "VOTING_DELEGATE_CANT_OVERWRITE";
 
-    enum VoterState { Absent, Yea, Nay, ManagerYea, ManagerNay }
+    enum VoterState { Absent, Yea, Nay, DelegateYea, DelegateNay }
 
     enum VotePhase { Main, Objection, Closed }
 
@@ -63,7 +63,7 @@ contract Voting is IForwarder, AragonApp {
         mapping (address => VoterState) voters;
     }
 
-    struct ManagedAddressList {
+    struct DelegatedAddressList {
         address[] addresses;
     }
 
@@ -77,10 +77,10 @@ contract Voting is IForwarder, AragonApp {
     uint256 public votesLength;
     uint64 public objectionPhaseTime;
 
-    // manager -> [managed holder address]
-    mapping(address => ManagedAddressList) private managedHolders;
-    // holder -> manager
-    mapping(address => address) private managers;
+    // delegate -> [delegated voter address]
+    mapping(address => DelegatedAddressList) private delegatedVoters;
+    // voter -> delegate
+    mapping(address => address) private delegates;
 
     event StartVote(uint256 indexed voteId, address indexed creator, string metadata);
     event CastVote(uint256 indexed voteId, address indexed voter, bool supports, uint256 stake);
@@ -90,7 +90,7 @@ contract Voting is IForwarder, AragonApp {
     event ChangeMinQuorum(uint64 minAcceptQuorumPct);
     event ChangeVoteTime(uint64 voteTime);
     event ChangeObjectionPhaseTime(uint64 objectionPhaseTime);
-    event ManagerSet(address indexed holder, address indexed previousVotingManager, address indexed newVotingManager);
+    event DelegateSet(address indexed voter, address indexed previousDelegate, address indexed newDelegate);
 
     modifier voteExists(uint256 _voteId) {
         require(_voteId < votesLength, ERROR_NO_VOTE);
@@ -125,75 +125,75 @@ contract Voting is IForwarder, AragonApp {
     /**
      * TODO: Calculate gas spending and add hint for more efficient look up in the array if needed
      */
-    function setVotingManager(address _manager) public {
-        require(_manager != address(0), ERROR_ZERO_ADDRESS_PASSED);
+    function setDelegate(address _delegate) public {
+        require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
 
         address msgSender = msg.sender;
-        require(_manager != msg.sender, ERROR_SELF_MANAGER);
+        require(_delegate != msgSender, ERROR_SELF_DELEGATE);
 
-        address prevManager = managers[msgSender];
-        require(_manager != prevManager, ERROR_MANAGER_SAME_AS_PREV);
+        address prevDelegate = delegates[msgSender];
+        require(_delegate != prevDelegate, ERROR_DELEGATE_SAME_AS_PREV);
 
-        if (prevManager != address(0)) {
-            _removeManagedAddressFor(prevManager, msgSender);
+        if (prevDelegate != address(0)) {
+            _removeDelegatedAddressFor(prevDelegate, msgSender);
         }
 
-        _addManagedAddressFor(_manager, msgSender);
-        managers[msgSender] = _manager;
+        _addDelegatedAddressFor(_delegate, msgSender);
+        delegates[msgSender] = _delegate;
 
-        emit ManagerSet(msgSender, prevManager, _manager);
+        emit DelegateSet(msgSender, prevDelegate, _delegate);
     }
 
     /**
      * TODO: Calculate gas spending and add hint for more efficient look up in the array if needed
      */
-    function removeVotingManager() public {
+    function removeDelegate() public {
         address msgSender = msg.sender;
-        address prevManager = managers[msgSender];
-        require(prevManager != address(0), ERROR_MANAGER_NOT_SET);
+        address prevDelegate = delegates[msgSender];
+        require(prevDelegate != address(0), ERROR_DELEGATE_NOT_SET);
 
-        _removeManagedAddressFor(prevManager, msgSender);
-        managers[msgSender] = address(0);
+        _removeDelegatedAddressFor(prevDelegate, msgSender);
+        delegates[msgSender] = address(0);
 
-        emit ManagerSet(msgSender, prevManager, address(0));
+        emit DelegateSet(msgSender, prevDelegate, address(0));
     }
 
-    function _addManagedAddressFor(address _manager, address _holder) public {
-        require(_manager != address(0), ERROR_ZERO_ADDRESS_PASSED);
-        require(_holder != address(0), ERROR_ZERO_ADDRESS_PASSED);
+    function _addDelegatedAddressFor(address _delegate, address _voter) internal {
+        require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
+        require(_voter != address(0), ERROR_ZERO_ADDRESS_PASSED);
 
-        uint256 length = managedHolders[_manager].addresses.length;
-        require(length < MAX_HOLDERS_PER_MANAGER, ERROR_MAX_MANAGED_VOTERS_REACHED);
+        uint256 length = delegatedVoters[_delegate].addresses.length;
+        require(length < MAX_VOTERS_PER_DELEGATE, ERROR_MAX_DELEGATED_VOTERS_REACHED);
 
-        managedHolders[_manager].addresses.push(_holder);
+        delegatedVoters[_delegate].addresses.push(_voter);
     }
 
-    function _removeManagedAddressFor(address _manager, address _holder) public {
-        require(_manager != address(0), ERROR_ZERO_ADDRESS_PASSED);
-        require(_holder != address(0), ERROR_ZERO_ADDRESS_PASSED);
+    function _removeDelegatedAddressFor(address _delegate, address _voter) internal {
+        require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
+        require(_voter != address(0), ERROR_ZERO_ADDRESS_PASSED);
 
-        uint256 length = managedHolders[_manager].addresses.length;
+        uint256 length = delegatedVoters[_delegate].addresses.length;
         for (uint256 i = 0; i < length; i++) {
-            if (managedHolders[_manager].addresses[i] == _holder) {
-                managedHolders[_manager].addresses[i] = managedHolders[_manager].addresses[length - 1];
-                delete managedHolders[_manager].addresses[length - 1];
-                managedHolders[_manager].addresses.length--;
+            if (delegatedVoters[_delegate].addresses[i] == _voter) {
+                delegatedVoters[_delegate].addresses[i] = delegatedVoters[_delegate].addresses[length - 1];
+                delete delegatedVoters[_delegate].addresses[length - 1];
+                delegatedVoters[_delegate].addresses.length--;
                 break;
             }
         }
     }
 
-    function getManagedVoters(address _manager) public view returns (address[] memory) {
-        require(_manager != address(0), ERROR_ZERO_ADDRESS_PASSED);
-        return managedHolders[_manager].addresses;
+    function getDelegatedVoters(address _delegate) public view returns (address[] memory) {
+        require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
+        return delegatedVoters[_delegate].addresses;
     }
 
-    function getVotingManager(address _holder) public view returns (address) {
-        require(_holder != address(0), ERROR_ZERO_ADDRESS_PASSED);
-        return managers[_holder];
+    function getDelegate(address _voter) public view returns (address) {
+        require(_voter != address(0), ERROR_ZERO_ADDRESS_PASSED);
+        return delegates[_voter];
     }
 
-    // TODO: add getter allowing easily calculate compound total voting power for set of managed holders for particular voteId
+    // TODO: add getter allowing easily calculate compound total voting power for set of delegated voters for particular voteId
 
     /**
     * @notice Change required support to `@formatPct(_supportRequiredPct)`%
@@ -303,7 +303,7 @@ contract Voting is IForwarder, AragonApp {
 
     /**
      * TODO: Update the voteForMultiple function to allow voting with the entire voting power
-     * of both self-managed address and managed addresses / write voteWithFullPower function
+     * of both self-delegated address and delegated addresses / write voteWithFullPower function
      */
     function voteForMultiple(uint256 _voteId, bool _supports, address[] _voteForList) external voteExists(_voteId) {
         require(!_supports || _getVotePhase(votes[_voteId]) == VotePhase.Main, ERROR_CAN_NOT_VOTE);
@@ -484,34 +484,34 @@ contract Voting is IForwarder, AragonApp {
     * @dev Internal function to cast a vote or object to.
       @dev It assumes that voter can support or object to the vote
     */
-    function _vote(uint256 _voteId, bool _supports, address _voter, bool _isManager) internal {
+    function _vote(uint256 _voteId, bool _supports, address _voter, bool _isDelegate) internal {
         Vote storage vote_ = votes[_voteId];
 
         // This could re-enter, though we can assume the governance token is not malicious
         uint256 voterStake = token.balanceOfAt(_voter, vote_.snapshotBlock);
         VoterState state = vote_.voters[_voter];
 
-        // Voting manager can't overwrite holder vote
-        if (_isManager && (state == VoterState.Yea || state == VoterState.Nay)) {
-            revert(ERROR_MANAGER_CANNOT_OVERWRITE_VOTE);
+        // Delegate can't overwrite voter vote
+        if (_isDelegate && (state == VoterState.Yea || state == VoterState.Nay)) {
+            revert(ERROR_DELEGATE_CANNOT_OVERWRITE_VOTE);
         }
 
         // If voter had previously voted, decrease count
-        if (state == VoterState.Yea || state == VoterState.ManagerYea) {
+        if (state == VoterState.Yea || state == VoterState.DelegateYea) {
             vote_.yea = vote_.yea.sub(voterStake);
-        } else if (state == VoterState.Nay || state == VoterState.ManagerNay) {
+        } else if (state == VoterState.Nay || state == VoterState.DelegateNay) {
             vote_.nay = vote_.nay.sub(voterStake);
         }
 
         if (_supports) {
             vote_.yea = vote_.yea.add(voterStake);
-            vote_.voters[_voter] = _isManager ? VoterState.ManagerYea : VoterState.Yea;
+            vote_.voters[_voter] = _isDelegate ? VoterState.DelegateYea : VoterState.Yea;
         } else {
             vote_.nay = vote_.nay.add(voterStake);
-            vote_.voters[_voter] = _isManager ? VoterState.ManagerNay : VoterState.Nay;
+            vote_.voters[_voter] = _isDelegate ? VoterState.DelegateNay : VoterState.Nay;
         }
 
-        // TODO: consider to add an event indicates that manager have voted
+        // TODO: consider to add an event indicates that delegate have voted
         emit CastVote(_voteId, _voter, _supports, voterStake);
 
         if (_getVotePhase(vote_) == VotePhase.Objection) {
@@ -580,10 +580,10 @@ contract Voting is IForwarder, AragonApp {
         return _isVoteOpen(vote_) && token.balanceOfAt(_voter, vote_.snapshotBlock) > 0;
     }
 
-    function _canVoteFor(address _manager, address _voter) internal view returns (bool) {
-        require(_manager != address(0), ERROR_ZERO_ADDRESS_PASSED);
+    function _canVoteFor(address _delegate, address _voter) internal view returns (bool) {
+        require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
         require(_voter != address(0), ERROR_ZERO_ADDRESS_PASSED);
-        return managers[_voter] == _manager;
+        return delegates[_voter] == _delegate;
     }
 
     /**
