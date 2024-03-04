@@ -97,7 +97,7 @@ contract Voting is IForwarder, AragonApp {
     event ChangeVoteTime(uint64 voteTime);
     event ChangeObjectionPhaseTime(uint64 objectionPhaseTime);
     event SetDelegate(address indexed voter, address indexed delegate);
-    event RemoveDelegate(address indexed voter, address indexed delegate);
+    event ResetDelegate(address indexed voter, address indexed delegate);
     event CastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, address indexed voter, bool supports, uint256 stake);
 
     modifier voteExists(uint256 _voteId) {
@@ -224,8 +224,9 @@ contract Voting is IForwarder, AragonApp {
     * @param _executesIfDecided_deprecated Whether the vote should execute its action if it becomes decided
     */
     function vote(uint256 _voteId, bool _supports, bool _executesIfDecided_deprecated) external voteExists(_voteId) {
-        require(_canParticipateInVote(_voteId, _supports), ERROR_CAN_NOT_VOTE);
-        require(_hasVotingPower(votes[_voteId], msg.sender), ERROR_NO_VOTING_POWER);
+        Vote storage vote_ = votes[_voteId];
+        require(_isValidPhaseToVote(vote_, _supports), ERROR_CAN_NOT_VOTE);
+        require(_hasVotingPower(vote_, msg.sender), ERROR_NO_VOTING_POWER);
         _vote(_voteId, _supports, msg.sender, false);
     }
 
@@ -243,35 +244,31 @@ contract Voting is IForwarder, AragonApp {
     * @notice Assign `_delegate` as the delegate for the sender
     * @param _delegate address to delegate to
     */
-    function setDelegate(address _delegate) public {
+    function setDelegate(address _delegate) external {
         require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
+        require(_delegate != msg.sender, ERROR_SELF_DELEGATE);
 
-        address msgSender = msg.sender;
-        require(_delegate != msgSender, ERROR_SELF_DELEGATE);
-
-        address prevDelegate = delegates[msgSender].delegate;
+        address prevDelegate = delegates[msg.sender].delegate;
         require(_delegate != prevDelegate, ERROR_DELEGATE_SAME_AS_PREV);
 
-        uint256 votingPower = token.balanceOfAt(msgSender, getBlockNumber64() - 1);
+        uint256 votingPower = token.balanceOfAt(msg.sender, getBlockNumber64() - 1);
         require(votingPower > 0, ERROR_NO_VOTING_POWER);
 
         if (prevDelegate != address(0)) {
-            _removeDelegatedAddressFor(prevDelegate, msgSender);
+            _removeDelegatedAddressFor(prevDelegate, msg.sender);
         }
-        _addDelegatedAddressFor(_delegate, msgSender);
-
-        emit SetDelegate(msgSender, _delegate);
+        _addDelegatedAddressFor(_delegate, msg.sender);
     }
 
-    function removeDelegate() public {
-        address msgSender = msg.sender;
-        address prevDelegate = delegates[msgSender].delegate;
+    /**
+    * @notice Unassign `_delegate` from the sender
+    */
+    function resetDelegate() external {
+        address prevDelegate = delegates[msg.sender].delegate;
         require(prevDelegate != address(0), ERROR_DELEGATE_NOT_SET);
 
-        _removeDelegatedAddressFor(prevDelegate, msgSender);
-        delete delegates[msgSender];
-
-        emit RemoveDelegate(msgSender, prevDelegate);
+        _removeDelegatedAddressFor(prevDelegate, msg.sender);
+        delete delegates[msg.sender];
     }
 
     /**
@@ -281,16 +278,14 @@ contract Voting is IForwarder, AragonApp {
      * @param _voters list of voters
      */
     function attemptVoteForMultiple(uint256 _voteId, bool _supports, address[] _voters) public voteExists(_voteId) {
-        require(_canParticipateInVote(_voteId, _supports), ERROR_CAN_NOT_VOTE);
-
         Vote storage vote_ = votes[_voteId];
-        address msgSender = msg.sender;
+        require(_isValidPhaseToVote(vote_, _supports), ERROR_CAN_NOT_VOTE);
         bool hasManagedToVote = false;
 
         for (uint256 i = 0; i < _voters.length; ++i) {
             address voter = _voters[i];
             require(_hasVotingPower(vote_, voter), ERROR_NO_VOTING_POWER);
-            if (_canVoteFor(vote_, msgSender, voter)) {
+            if (_canVoteFor(vote_, msg.sender, voter)) {
                 _vote(_voteId, _supports, voter, true);
                 hasManagedToVote = true;
             }
@@ -366,7 +361,7 @@ contract Voting is IForwarder, AragonApp {
     */
     function canVote(uint256 _voteId, address _voter) external view voteExists(_voteId) returns (bool) {
         Vote storage vote_ = votes[_voteId];
-        return _canParticipateInVote(_voteId, false) && _hasVotingPower(vote_, _voter);
+        return _isVoteOpen(vote_) && _hasVotingPower(vote_, _voter);
     }
 
     /**
@@ -434,7 +429,7 @@ contract Voting is IForwarder, AragonApp {
     * @param _voter address of the voter
     * @return VoterState of the requested voter for a certain vote
     */
-    function getVoterState(uint256 _voteId, address _voter) public view voteExists(_voteId) returns (VoterState) {
+    function getVoterState(uint256 _voteId, address _voter) external view voteExists(_voteId) returns (VoterState) {
         return votes[_voteId].voters[_voter];
     }
 
@@ -446,7 +441,7 @@ contract Voting is IForwarder, AragonApp {
      * @return the array of delegated voters
      * @return the array of voting power of delegated voters
      */
-    function getDelegatedVoters(address _delegate, uint256 _offset, uint256 _limit) public view returns (address[] memory, uint256[] memory) {
+    function getDelegatedVoters(address _delegate, uint256 _offset, uint256 _limit) external view returns (address[] memory, uint256[] memory) {
         return _getDelegatedVotersAt(_delegate, _offset, _limit, getBlockNumber64());
     }
 
@@ -458,7 +453,7 @@ contract Voting is IForwarder, AragonApp {
      * @return the array of delegated voters
      * @return the array of voting power of delegated voters
      */
-    function getDelegatedVotersAtVote(address _delegate, uint256 _offset, uint256 _limit, uint256 _voteId) public view voteExists(_voteId) returns (address[] memory, uint256[] memory) {
+    function getDelegatedVotersAtVote(address _delegate, uint256 _offset, uint256 _limit, uint256 _voteId) external view voteExists(_voteId) returns (address[] memory, uint256[] memory) {
         Vote storage vote_ = votes[_voteId];
         return _getDelegatedVotersAt(_delegate, _offset, _limit, vote_.snapshotBlock);
     }
@@ -468,7 +463,7 @@ contract Voting is IForwarder, AragonApp {
     * @param _delegate address of the delegate
     * @return the number of delegated voters
     */
-    function getDelegatedVotersCount(address _delegate) public view returns (uint256) {
+    function getDelegatedVotersCount(address _delegate) external view returns (uint256) {
         require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
         return delegatedVoters[_delegate].addresses.length;
     }
@@ -477,7 +472,7 @@ contract Voting is IForwarder, AragonApp {
      * @notice Return the delegate address assigned to the `_voter`
      * @param _voter the address of the voter
      */
-    function getDelegate(address _voter) public view returns (address) {
+    function getDelegate(address _voter) external view returns (address) {
         require(_voter != address(0), ERROR_ZERO_ADDRESS_PASSED);
         return delegates[_voter].delegate;
     }
@@ -487,14 +482,13 @@ contract Voting is IForwarder, AragonApp {
      * @param _voters the list of voters
      * @param _voteId Vote identifier
      */
-    function getVotersStateAtVote(address[] _voters, uint256 _voteId) public view voteExists(_voteId) returns (VoterState[] memory voterStatesList) {
-        uint256 length = _voters.length;
-        voterStatesList = new VoterState[](length);
+    function getVotersStateAtVote(uint256 _voteId, address[] _voters) external view voteExists(_voteId) returns (VoterState[] memory voterStatesList) {
+        uint256 votersCount = _voters.length;
+        voterStatesList = new VoterState[](votersCount);
         Vote storage vote_ = votes[_voteId];
-        for (uint256 i = 0; i < length; ++i) {
+        for (uint256 i = 0; i < votersCount; ++i) {
             voterStatesList[i] = vote_.voters[_voters[i]];
         }
-        return voterStatesList;
     }
 
     // Internal fns
@@ -586,11 +580,12 @@ contract Voting is IForwarder, AragonApp {
      * @param _voter address of the voter
      */
     function _addDelegatedAddressFor(address _delegate, address _voter) internal {
-        uint256 length = delegatedVoters[_delegate].addresses.length;
-        require(length < UINT_96_MAX, ERROR_MAX_DELEGATED_VOTERS_REACHED);
+        uint256 delegatedVotersCount = delegatedVoters[_delegate].addresses.length;
+        require(delegatedVotersCount <= UINT_96_MAX, ERROR_MAX_DELEGATED_VOTERS_REACHED);
 
         delegatedVoters[_delegate].addresses.push(_voter);
-        delegates[_voter] = Delegate(_delegate, uint96(delegatedVoters[_delegate].addresses.length.sub(1)));
+        delegates[_voter] = Delegate(_delegate, uint96(delegatedVotersCount));
+        emit SetDelegate(_voter, _delegate);
     }
 
     /**
@@ -599,16 +594,18 @@ contract Voting is IForwarder, AragonApp {
      * @param _voter address of the voter
      */
     function _removeDelegatedAddressFor(address _delegate, address _voter) internal {
-        uint256 length = delegatedVoters[_delegate].addresses.length;
-        require(length > 0, ERROR_DELEGATE_NOT_SET);
+        uint256 delegatedVotersCount = delegatedVoters[_delegate].addresses.length;
+        require(delegatedVotersCount > 0, ERROR_DELEGATE_NOT_SET);
 
         uint96 voterIndex = delegates[_voter].voterIndex;
-        address lastVoter = delegatedVoters[_delegate].addresses[length - 1];
-        if (voterIndex < length - 1) {
+        assert(delegatedVoters[_delegate].addresses[voterIndex] == _voter);
+        address lastVoter = delegatedVoters[_delegate].addresses[delegatedVotersCount - 1];
+        if (voterIndex < delegatedVotersCount - 1) {
             delegatedVoters[_delegate].addresses[voterIndex] = lastVoter;
             delegates[lastVoter].voterIndex = voterIndex;
         }
         delegatedVoters[_delegate].addresses.length--;
+        emit ResetDelegate(_voter, _delegate);
     }
 
     /**
@@ -622,13 +619,13 @@ contract Voting is IForwarder, AragonApp {
     function _getDelegatedVotersAt(address _delegate, uint256 _offset, uint256 _limit, uint256 _blockNumber) internal view returns (address[] memory votersList, uint256[] memory votingPowerList) {
         require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
         require(_limit > 0, ERROR_INVALID_LIMIT);
-        uint256 length = delegatedVoters[_delegate].addresses.length;
-        if (length == 0) {
-            return (new address[](0), new uint256[](0));
+        uint256 delegatedVotersCount = delegatedVoters[_delegate].addresses.length;
+        if (delegatedVotersCount == 0) {
+            return (votersList, votingPowerList);
         }
-        require(_offset < length, ERROR_INVALID_OFFSET);
+        require(_offset < delegatedVotersCount, ERROR_INVALID_OFFSET);
 
-        uint256 returnCount = _offset.add(_limit) > length ? length.sub(_offset) : _limit;
+        uint256 returnCount = _offset.add(_limit) > delegatedVotersCount ? delegatedVotersCount.sub(_offset) : _limit;
         votersList = new address[](returnCount);
         votingPowerList = new uint256[](returnCount);
         for (uint256 i = 0; i < returnCount; ++i) {
@@ -670,12 +667,12 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @dev Internal function to check if a voter can participate on a vote. It assumes the queried vote exists.
+    * @dev Internal function to check if the vote is open and given option is applicable at the current phase.
+    *      It assumes the queried vote exists.
     * @return True if the given voter can participate a certain vote, false otherwise
     */
-    function _canParticipateInVote(uint256 _voteId, bool _supports) internal view returns (bool) {
-        Vote storage vote_ = votes[_voteId];
-        return _isVoteOpen(vote_) && _isValidPhaseToVote(vote_, _supports);
+    function _isValidPhaseToVote(Vote storage _vote, bool _supports) internal view returns (bool) {
+        return _isVoteOpen(_vote) && (!_supports || _getVotePhase(_vote) == VotePhase.Main);
     }
 
     function _isDelegateFor(address _delegate, address _voter) internal view returns (bool) {
@@ -686,14 +683,10 @@ contract Voting is IForwarder, AragonApp {
     }
 
     function _canVoteFor(Vote storage _vote, address _delegate, address _voter) internal view returns (bool) {
-        return _isDelegateFor(_delegate, _voter) && !_hasVoted(_vote, _voter);
+        return _isDelegateFor(_delegate, _voter) && !_hasVotedDirectly(_vote, _voter);
     }
 
-    function _isValidPhaseToVote(Vote storage _vote, bool _supports) internal view returns (bool) {
-        return !_supports || _getVotePhase(_vote) == VotePhase.Main;
-    }
-
-    function _hasVoted(Vote storage _vote, address _voter) internal view returns (bool) {
+    function _hasVotedDirectly(Vote storage _vote, address _voter) internal view returns (bool) {
         VoterState state = _vote.voters[_voter];
         return state == VoterState.Yea || state == VoterState.Nay;
     }

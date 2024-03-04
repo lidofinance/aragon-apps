@@ -938,11 +938,11 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
     it('voter can remove delegate', async () => {
       await voting.setDelegate(delegate1, {from: holder29})
 
-      const tx = await voting.removeDelegate({from: holder29})
-      assertEvent(tx, 'RemoveDelegate', {
+      const tx = await voting.resetDelegate({from: holder29})
+      assertEvent(tx, 'ResetDelegate', {
         expectedArgs: {voter: holder29, delegate: delegate1}
       })
-      assertAmountOfEvents(tx, 'RemoveDelegate', {expectedAmount: 1})
+      assertAmountOfEvents(tx, 'ResetDelegate', {expectedAmount: 1})
       const delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, 1))[0]
       assertArraysEqualAsSets(delegatedVoters, [], 'delegate1 should not be a delegate of anyone')
     })
@@ -953,16 +953,16 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       await voting.setDelegate(delegate1, {from: holder51})
 
 
-      const tx1 = await voting.removeDelegate({from: holder29})
-      assertEvent(tx1, 'RemoveDelegate', {
+      const tx1 = await voting.resetDelegate({from: holder29})
+      assertEvent(tx1, 'ResetDelegate', {
         expectedArgs: {voter: holder29, delegate: delegate1}
       })
-      assertAmountOfEvents(tx1, 'RemoveDelegate', {expectedAmount: 1})
-      const tx2 = await voting.removeDelegate({from: holder51})
-      assertEvent(tx2, 'RemoveDelegate', {
+      assertAmountOfEvents(tx1, 'ResetDelegate', {expectedAmount: 1})
+      const tx2 = await voting.resetDelegate({from: holder51})
+      assertEvent(tx2, 'ResetDelegate', {
         expectedArgs: {voter: holder51, delegate: delegate1}
       })
-      assertAmountOfEvents(tx2, 'RemoveDelegate', {expectedAmount: 1})
+      assertAmountOfEvents(tx2, 'ResetDelegate', {expectedAmount: 1})
       const delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, 1))[0]
       assertArraysEqualAsSets(delegatedVoters, [holder20], 'delegate1 have only holder20 as a delegated voter')
     })
