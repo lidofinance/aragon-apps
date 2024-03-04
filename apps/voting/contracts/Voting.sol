@@ -225,7 +225,7 @@ contract Voting is IForwarder, AragonApp {
     */
     function vote(uint256 _voteId, bool _supports, bool _executesIfDecided_deprecated) external voteExists(_voteId) {
         Vote storage vote_ = votes[_voteId];
-        require(_canParticipateInVote(vote_, _supports), ERROR_CAN_NOT_VOTE);
+        require(_isValidPhaseToVote(vote_, _supports), ERROR_CAN_NOT_VOTE);
         require(_hasVotingPower(vote_, msg.sender), ERROR_NO_VOTING_POWER);
         _vote(_voteId, _supports, msg.sender, false);
     }
@@ -280,7 +280,7 @@ contract Voting is IForwarder, AragonApp {
      */
     function voteForMultiple(uint256 _voteId, bool _supports, address[] _voters) public voteExists(_voteId) {
         Vote storage vote_ = votes[_voteId];
-        require(_canParticipateInVote(vote_, _supports), ERROR_CAN_NOT_VOTE);
+        require(_isValidPhaseToVote(vote_, _supports), ERROR_CAN_NOT_VOTE);
 
         for (uint256 i = 0; i < _voters.length; ++i) {
             address voter = _voters[i];
@@ -357,7 +357,7 @@ contract Voting is IForwarder, AragonApp {
     */
     function canVote(uint256 _voteId, address _voter) external view voteExists(_voteId) returns (bool) {
         Vote storage vote_ = votes[_voteId];
-        return _canParticipateInVote(vote_, false) && _hasVotingPower(vote_, _voter);
+        return _isVoteOpen(vote_) && _hasVotingPower(vote_, _voter);
     }
 
     /**
@@ -664,8 +664,8 @@ contract Voting is IForwarder, AragonApp {
     * @dev Internal function to check if a voter can participate on a vote. It assumes the queried vote exists.
     * @return True if the given voter can participate a certain vote, false otherwise
     */
-    function _canParticipateInVote(Vote storage _vote, bool _supports) internal view returns (bool) {
-        return _isVoteOpen(_vote) && _isValidPhaseToVote(_vote, _supports);
+    function _isValidPhaseToVote(Vote storage _vote, bool _supports) internal view returns (bool) {
+        return _isVoteOpen(_vote) && (!_supports || _getVotePhase(_vote) == VotePhase.Main);
     }
 
     function _isDelegateFor(address _delegate, address _voter) internal view returns (bool) {
@@ -677,10 +677,6 @@ contract Voting is IForwarder, AragonApp {
 
     function _canVoteFor(Vote storage _vote, address _delegate, address _voter) internal view returns (bool) {
         return _isDelegateFor(_delegate, _voter) && !_hasVoted(_vote, _voter);
-    }
-
-    function _isValidPhaseToVote(Vote storage _vote, bool _supports) internal view returns (bool) {
-        return !_supports || _getVotePhase(_vote) == VotePhase.Main;
     }
 
     function _hasVoted(Vote storage _vote, address _voter) internal view returns (bool) {
