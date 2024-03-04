@@ -280,7 +280,7 @@ contract Voting is IForwarder, AragonApp {
      * @param _supports Whether the delegate supports the vote
      * @param _voters list of voters
      */
-    function voteForMultiple(uint256 _voteId, bool _supports, address[] _voters) public voteExists(_voteId) {
+    function attemptVoteForMultiple(uint256 _voteId, bool _supports, address[] _voters) public voteExists(_voteId) {
         require(_canParticipateInVote(_voteId, _supports), ERROR_CAN_NOT_VOTE);
 
         Vote storage vote_ = votes[_voteId];
@@ -305,10 +305,10 @@ contract Voting is IForwarder, AragonApp {
      * @param _supports Whether the delegate supports the vote
      * @param _voter address of the voter
      */
-    function voteFor(uint256 _voteId, bool _supports, address _voter) external voteExists(_voteId) {
+    function attemptVoteFor(uint256 _voteId, bool _supports, address _voter) external voteExists(_voteId) {
         address[] memory voters = new address[](1);
         voters[0] = _voter;
-        voteForMultiple(_voteId, _supports, voters);
+        attemptVoteForMultiple(_voteId, _supports, voters);
     }
 
     // Forwarding fns
