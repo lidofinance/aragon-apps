@@ -97,7 +97,7 @@ contract Voting is IForwarder, AragonApp {
     event ChangeVoteTime(uint64 voteTime);
     event ChangeObjectionPhaseTime(uint64 objectionPhaseTime);
     event SetDelegate(address indexed voter, address indexed delegate);
-    event RemoveDelegate(address indexed voter, address indexed delegate);
+    event ResetDelegate(address indexed voter, address indexed delegate);
     event CastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, address indexed voter, bool supports, uint256 stake);
 
     modifier voteExists(uint256 _voteId) {
@@ -258,18 +258,17 @@ contract Voting is IForwarder, AragonApp {
             _removeDelegatedAddressFor(prevDelegate, msg.sender);
         }
         _addDelegatedAddressFor(_delegate, msg.sender);
-
-        emit SetDelegate(msg.sender, _delegate);
     }
 
-    function removeDelegate() external {
+    /**
+    * @notice Unassign `_delegate` from the sender
+    */
+    function resetDelegate() external {
         address prevDelegate = delegates[msg.sender].delegate;
         require(prevDelegate != address(0), ERROR_DELEGATE_NOT_SET);
 
         _removeDelegatedAddressFor(prevDelegate, msg.sender);
         delete delegates[msg.sender];
-
-        emit RemoveDelegate(msg.sender, prevDelegate);
     }
 
     /**
@@ -581,6 +580,7 @@ contract Voting is IForwarder, AragonApp {
 
         delegatedVoters[_delegate].addresses.push(_voter);
         delegates[_voter] = Delegate(_delegate, uint96(delegatedVotersCount));
+        emit SetDelegate(_voter, _delegate);
     }
 
     /**
@@ -600,6 +600,7 @@ contract Voting is IForwarder, AragonApp {
             delegates[lastVoter].voterIndex = voterIndex;
         }
         delegatedVoters[_delegate].addresses.length--;
+        emit ResetDelegate(_voter, _delegate);
     }
 
     /**
