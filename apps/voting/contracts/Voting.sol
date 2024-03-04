@@ -662,7 +662,8 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @dev Internal function to check if a voter can participate on a vote. It assumes the queried vote exists.
+    * @dev Internal function to check if the vote is open and given option is applicable at the current phase.
+    *      It assumes the queried vote exists.
     * @return True if the given voter can participate a certain vote, false otherwise
     */
     function _isValidPhaseToVote(Vote storage _vote, bool _supports) internal view returns (bool) {
@@ -677,10 +678,10 @@ contract Voting is IForwarder, AragonApp {
     }
 
     function _canVoteFor(Vote storage _vote, address _delegate, address _voter) internal view returns (bool) {
-        return _isDelegateFor(_delegate, _voter) && !_hasVoted(_vote, _voter);
+        return _isDelegateFor(_delegate, _voter) && !_hasVotedDirectly(_vote, _voter);
     }
 
-    function _hasVoted(Vote storage _vote, address _voter) internal view returns (bool) {
+    function _hasVotedDirectly(Vote storage _vote, address _voter) internal view returns (bool) {
         VoterState state = _vote.voters[_voter];
         return state == VoterState.Yea || state == VoterState.Nay;
     }
