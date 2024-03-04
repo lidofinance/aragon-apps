@@ -277,16 +277,21 @@ contract Voting is IForwarder, AragonApp {
      * @param _supports Whether the delegate supports the vote
      * @param _voters list of voters
      */
-    function voteForMultiple(uint256 _voteId, bool _supports, address[] _voters) public voteExists(_voteId) {
+    function attemptVoteForMultiple(uint256 _voteId, bool _supports, address[] _voters) public voteExists(_voteId) {
         Vote storage vote_ = votes[_voteId];
         require(_isValidPhaseToVote(vote_, _supports), ERROR_CAN_NOT_VOTE);
+        bool hasManagedToVote = false;
 
         for (uint256 i = 0; i < _voters.length; ++i) {
             address voter = _voters[i];
             require(_hasVotingPower(vote_, voter), ERROR_NO_VOTING_POWER);
-            require(_canVoteFor(vote_, msg.sender, voter), ERROR_CAN_NOT_VOTE_FOR);
-            _vote(_voteId, _supports, voter, true);
+            if (_canVoteFor(vote_, msg.sender, voter)) {
+                _vote(_voteId, _supports, voter, true);
+                hasManagedToVote = true;
+            }
         }
+
+        require(hasManagedToVote, ERROR_CAN_NOT_VOTE_FOR);
     }
 
     /**
@@ -295,10 +300,10 @@ contract Voting is IForwarder, AragonApp {
      * @param _supports Whether the delegate supports the vote
      * @param _voter address of the voter
      */
-    function voteFor(uint256 _voteId, bool _supports, address _voter) external voteExists(_voteId) {
+    function attemptVoteFor(uint256 _voteId, bool _supports, address _voter) external voteExists(_voteId) {
         address[] memory voters = new address[](1);
         voters[0] = _voter;
-        voteForMultiple(_voteId, _supports, voters);
+        attemptVoteForMultiple(_voteId, _supports, voters);
     }
 
     // Forwarding fns
