@@ -1,4 +1,4 @@
-const { makeErrorMappingProxy } = require('@aragon/contract-helpers-test');
+const { makeErrorMappingProxy } = require('@aragon/contract-helpers-test')
 
 module.exports = makeErrorMappingProxy({
   // aragonOS errors
@@ -29,4 +29,4 @@ module.exports = makeErrorMappingProxy({
   VOTING_SELF_DELEGATE: 'VOTING_SELF_DELEGATE',
   VOTING_DELEGATE_SAME_AS_PREV: 'VOTING_DELEGATE_SAME_AS_PREV',
   VOTING_DELEGATE_CANT_OVERWRITE: 'VOTING_DELEGATE_CANT_OVERWRITE',
-});
+})
