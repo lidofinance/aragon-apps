@@ -103,7 +103,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
   })
 
   for (const decimals of [0, 2, 18, 26]) {
-      context(`normal token supply, ${decimals} decimals`, () => {
+    context(`normal token supply, ${decimals} decimals`, () => {
       const neededSupport = pct16(50)
       const minimumAcceptanceQuorum = pct16(20)
 
@@ -183,7 +183,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
           const action = { to: executionTarget.address, calldata: executionTarget.contract.methods.execute().encodeABI() }
           script = encodeCallScript([action, action])
 
-          const receipt = await voting.methods['newVote(bytes,string,bool,bool)'](script, 'metadata', false, false, { from: holder51 });
+          const receipt = await voting.methods['newVote(bytes,string,bool,bool)'](script, 'metadata', false, false, { from: holder51 })
           voteId = getEventArgument(receipt, 'StartVote', 'voteId')
           creator = getEventArgument(receipt, 'StartVote', 'creator')
           metadata = getEventArgument(receipt, 'StartVote', 'metadata')
@@ -990,6 +990,271 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
 
       const delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, 2))[0]
       assertArraysEqualAsSets(delegatedVoters, [holder29, holder51], 'delegate1 should be a delegate of holder29 and holder51')
+    })
+  })
+
+  context('delegation state management', () => {
+    const neededSupport = pct16(50)
+    const minimumAcceptanceQuorum = pct16(20)
+    const decimals = 18
+    const defaultLimit = 100
+
+    beforeEach(async () => {
+      token = await MiniMeToken.new(ZERO_ADDRESS, ZERO_ADDRESS, 0, 'n', decimals, 'n', true) // empty parameters minime
+
+      await token.generateTokens(holder20, bigExp(20, decimals))
+      await token.generateTokens(holder29, bigExp(29, decimals))
+      await token.generateTokens(holder51, bigExp(51, decimals))
+      await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, votingDuration, 0)
+
+      executionTarget = await ExecutionTarget.new()
+    })
+
+    it(`voter can assign themself a delegate`, async () => {
+      const tx = await voting.setDelegate(delegate1, {from: holder29})
+      assertEvent(tx, 'SetDelegate', {
+        expectedArgs: {voter: holder29, delegate: delegate1}
+      })
+      assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+
+      const delegate = await voting.getDelegate(holder29)
+      assert.equal(delegate, delegate1, 'holder29 should have delegate1 as a delegate')
+
+      const delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, defaultLimit))[0]
+      assertArraysEqualAsSets(delegatedVoters, [holder29], 'delegate1 should be a delegate of holder29')
+    })
+
+    it(`voter can change their assigned delegate`, async () => {
+      await voting.setDelegate(delegate1, {from: holder29})
+
+      const tx = await voting.setDelegate(delegate2, {from: holder29})
+      assertEvent(tx, 'SetDelegate', {
+        expectedArgs: {voter: holder29, delegate: delegate2}
+      })
+      assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+
+      const delegate = await voting.getDelegate(holder29)
+      assert.equal(delegate, delegate2, 'holder29 should have delegate2 as a delegate')
+
+      const delegatedVoters = (await voting.getDelegatedVoters(delegate2, 0, defaultLimit))[0]
+      assertArraysEqualAsSets(delegatedVoters, [holder29], 'delegate2 should be a delegate of holder29')
+    })
+
+    it(`multiple voters can assign themselves the delegate`, async () => {
+      await voting.setDelegate(delegate1, {from: holder29})
+      await voting.setDelegate(delegate1, {from: holder20})
+
+      const delegate29 = await voting.getDelegate(holder29)
+      assert.equal(delegate29, delegate1, 'holder29 should have delegate1 as a delegate')
+
+      const delegate20 = await voting.getDelegate(holder20)
+      assert.equal(delegate20, delegate1, 'holder20 should have delegate1 as a delegate')
+
+
+      const delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, defaultLimit))[0]
+      assertArraysEqualAsSets(delegatedVoters, [holder29, holder20], 'delegate1 should be a delegate of both holder29 and holder20')
+    })
+
+    it(`voter can't set the zero address as a delegate`, async () => {
+      await assertRevert(
+        voting.setDelegate(ZERO_ADDRESS, {from: holder29}),
+        ERRORS.VOTING_ZERO_ADDRESS_PASSED
+      )
+    })
+
+    it(`voter can't assign themself as a delegate`, async () => {
+      await assertRevert(
+        voting.setDelegate(holder29, {from: holder29}),
+        ERRORS.VOTING_SELF_DELEGATE
+      )
+    })
+
+    it(`voter can't assign their current delegate as a delegate`, async () => {
+      await voting.setDelegate(delegate1, {from: holder29})
+      await assertRevert(
+        voting.setDelegate(delegate1, {from: holder29}),
+        ERRORS.VOTING_DELEGATE_SAME_AS_PREV
+      )
+    })
+
+    it(`voter with zero token balance can't assign a delegate `, async () => {
+      await assertRevert(
+        voting.setDelegate(delegate1, {from: nonHolder}),
+        ERRORS.VOTING_NO_VOTING_POWER
+      )
+    })
+
+    it(`voter can unassign their delegate`, async () => {
+      await voting.setDelegate(delegate1, {from: holder29})
+
+      const tx = await voting.resetDelegate({from: holder29})
+      assertEvent(tx, 'ResetDelegate', {
+        expectedArgs: {voter: holder29, delegate: delegate1}
+      })
+      assertAmountOfEvents(tx, 'ResetDelegate', {expectedAmount: 1})
+
+      const delegate = await voting.getDelegate(holder29)
+      assert.equal(delegate, ZERO_ADDRESS, `holder29 shouldn't have a delegate anymore`)
+
+      const delegatedVoters = (await voting.getDelegatedVoters(delegate2, 0, defaultLimit))[0]
+      assertArraysEqualAsSets(delegatedVoters, [], 'delegatedVoters should be empty')
+    })
+
+    it(`voter can't unassign their delegate if they wasn't assigned before`, async () => {
+      await assertRevert(
+        voting.resetDelegate({from: holder29}),
+        ERRORS.VOTING_DELEGATE_NOT_SET
+      )
+    })
+
+    it(`voter can unassign a delegate who has multiple delegated voters`, async () => {
+      await voting.setDelegate(delegate1, {from: holder20})
+      await voting.setDelegate(delegate1, {from: holder29})
+
+      await voting.resetDelegate({from: holder29})
+      const delegate = await voting.getDelegate(holder29)
+      assert.equal(delegate, ZERO_ADDRESS, `holder29 shouldn't have a delegate anymore`)
+
+      const delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, defaultLimit))[0]
+      assertArraysEqualAsSets(delegatedVoters, [holder20], 'delegatedVoters should contain only holder20')
+    })
+
+    it(`multiple voters can unassign the delegate`, async () => {
+      await voting.setDelegate(delegate1, {from: holder20})
+      await voting.setDelegate(delegate1, {from: holder29})
+      await voting.setDelegate(delegate1, {from: holder51})
+
+      await voting.resetDelegate({from: holder29})
+      await voting.resetDelegate({from: holder51})
+
+      const delegate20 = await voting.getDelegate(holder20)
+      assert.equal(delegate20, delegate1, `holder20 should still have delegate1 as a delegate`)
+
+      const delegate29 = await voting.getDelegate(holder29)
+      assert.equal(delegate29, ZERO_ADDRESS, `holder29 shouldn't have a delegate anymore`)
+
+      const delegate51 = await voting.getDelegate(holder51)
+      assert.equal(delegate51, ZERO_ADDRESS, `holder51 shouldn't have a delegate anymore`)
+
+      const delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, defaultLimit))[0]
+      assertArraysEqualAsSets(delegatedVoters, [holder20], 'delegatedVoters should contain only holder20')
+    })
+
+  })
+
+  context('delegated voters getters', () => {
+    const neededSupport = pct16(50)
+    const minimumAcceptanceQuorum = pct16(20)
+    const decimals = 18
+    const defaultLimit = 100
+    const voters = [{
+      account: holder1,
+      balance: bigExp(1, decimals)
+    },{
+      account: holder2,
+      balance: bigExp(2, decimals)
+    }, {
+      account: holder20,
+      balance: bigExp(20, decimals)
+    }, {
+      account: holder29,
+      balance: bigExp(29, decimals)
+    }]
+
+    beforeEach(async () => {
+      token = await MiniMeToken.new(ZERO_ADDRESS, ZERO_ADDRESS, 0, 'n', decimals, 'n', true) // empty parameters minime
+
+      await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, votingDuration, 0)
+
+      for (let i = 0; i < voters.length; i++) {
+        await token.generateTokens(voters[i].account, voters[i].balance)
+        await voting.setDelegate(delegate1, {from: voters[i].account})
+      }
+
+      executionTarget = await ExecutionTarget.new()
+    })
+
+    it('should return correct delegated voters count', async () => {
+      const delegatedVotersCount = (await voting.getDelegatedVotersCount(delegate1)).toNumber()
+      assert(delegatedVotersCount === voters.length)
+    })
+
+    it(`revert if "_delegate" is zero address`, async () => {
+      await assertRevert(
+        voting.getDelegatedVotersCount(ZERO_ADDRESS),
+        ERRORS.VOTING_ZERO_ADDRESS_PASSED
+      )
+
+      await assertRevert(
+        voting.getDelegatedVoters(ZERO_ADDRESS, 0, defaultLimit),
+        ERRORS.VOTING_ZERO_ADDRESS_PASSED
+      )
+    })
+
+    it(`revert if "_limit" is 0`, async () => {
+      await assertRevert(
+        voting.getDelegatedVoters(ZERO_ADDRESS, 0, defaultLimit),
+        ERRORS.VOTING_ZERO_ADDRESS_PASSED
+      )
+    })
+
+    it(`if delegatedVoters array length is 0, return two empty arrays`, async () => {
+      const delegatdVotersData = await voting.getDelegatedVoters(nonHolder, 0, defaultLimit)
+      assert(delegatdVotersData[0].length === 0, 'votersList should be empty')
+      assert(delegatdVotersData[1].length === 0, 'votingPowerList should be empty')
+    })
+
+    it(`should return correct delegated voters data if offset + limit >= votersCount`, async () => {
+      const offset = 2
+      const limit = 5
+      const delegatedVotersData = await voting.getDelegatedVoters(delegate1, offset, limit)
+      const delegatedVotersCount = (await voting.getDelegatedVotersCount(delegate1)).toNumber()
+      const delegatedVotersCountToReturn = delegatedVotersCount - offset
+
+      assert(delegatedVotersData[0].length === delegatedVotersCountToReturn)
+      assert(delegatedVotersData[1].length === delegatedVotersCountToReturn)
+
+      const votersSlice = voters.slice(offset, delegatedVotersCount)
+      const votersListSlice = votersSlice.map(voter => voter.account)
+      assertArraysEqualAsSets(delegatedVotersData[0], votersListSlice, 'votersList should be correct')
+
+      const votingPowerListSlice = votersSlice.map((voter) => voter.balance.toString())
+      const votingPowerList = delegatedVotersData[1].map(votingPower => votingPower.toString())
+      assertArraysEqualAsSets(votingPowerList, votingPowerListSlice, 'votingPowerList should be correct')
+    })
+
+    it(`should return correct delegated voters data if offset + limit < votersCount`, async () => {
+      const offset = 1
+      const limit = 1
+      const delegatedVotersData = await voting.getDelegatedVoters(delegate1, offset, limit)
+
+      assert(delegatedVotersData[0].length === limit)
+      assert(delegatedVotersData[1].length === limit)
+
+      const votersSlice = voters.slice(offset, offset + limit)
+      const votersListSlice = votersSlice.map(voter => voter.account)
+      assertArraysEqualAsSets(delegatedVotersData[0], votersListSlice, 'votersList should be correct')
+
+      const votingPowerListSlice = votersSlice.map((voter) => voter.balance.toString())
+      const votingPowerList = delegatedVotersData[1].map(votingPower => votingPower.toString())
+      assertArraysEqualAsSets(votingPowerList, votingPowerListSlice, 'votingPowerList should be correct')
+    })
+
+    it(`revert if _voter is zero address`, async () => {
+      await assertRevert(
+        voting.getDelegate(ZERO_ADDRESS),
+        ERRORS.VOTING_ZERO_ADDRESS_PASSED
+      )
+    })
+
+    it(`return zero address if no delegate`, async () => {
+      const delegate = await voting.getDelegate(nonHolder)
+      assert.equal(delegate, ZERO_ADDRESS, 'should return zero address')
+    })
+
+    it(`can get voter's delegate address`, async () => {
+      const delegate = await voting.getDelegate(holder1)
+      assert.equal(delegate, delegate1, 'should return delegate1 address')
     })
   })
 })
