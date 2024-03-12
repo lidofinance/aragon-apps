@@ -991,6 +991,63 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       const delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, 2))[0]
       assertArraysEqualAsSets(delegatedVoters, [holder29, holder51], 'delegate1 should be a delegate of holder29 and holder51')
     })
+
+    // Multiple voters with non-zero balances of governance token are delegating their voting
+    // power to a single delegate. The voting starts and the delegate is voting for all of them - first
+    // they get the full list of voters with their balance snapshot and vote states of the given voting,
+    // then they vote for that list.
+    it('delegate can manage several voters and vote for them', async () => {
+      await voting.setDelegate(delegate1, {from: holder1})
+      await voting.setDelegate(delegate1, {from: holder20})
+      await voting.setDelegate(delegate2, {from: holder29})
+      await voting.setDelegate(delegate2, {from: holder51})
+
+      await voting.unsafelyChangeVoteTime(1500)
+
+      const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
+
+      let { snapshotBlock } = await voting.getVote(voteId)
+      await new Promise( (resolve) => web3.eth.currentProvider.send(
+          { method: "evm_mine", params: [], id: 42, jsonrpc: "2.0"}, resolve)
+      )
+
+      const currentBlock = await web3.eth.getBlockNumber()
+      assert.isBelow(Number(snapshotBlock), currentBlock)
+
+      // not working with getDelegatedVotersAtVote
+      // await voting.mockIncreaseTime(1)
+      // await voting.setDelegate(delegate2, {from: holder20})
+
+      const delegatedVotersData1 = await voting.getDelegatedVotersAtVote(delegate1, 0, 3, voteId)
+      const delegatedVotersData2 = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
+
+      assert.equal(delegatedVotersData1[0].length, 2)
+      assert.equal(delegatedVotersData2[0].length, 2)
+
+      for (const holder of delegatedVotersData1[0]) {
+        assert.equal(await voting.canVote(voteId, holder), true, 'should be able to vote')
+        // await voting.vote(voteId, true, false, { from: holder })
+        await voting.attemptVoteFor(voteId, false, holder, {from: delegate1})
+      }
+
+      for (const holder of delegatedVotersData2[0]) {
+        assert.equal(await voting.canVote(voteId, holder), true, 'should be able to vote')
+      }
+      await voting.attemptVoteForMultiple(voteId, true, delegatedVotersData2[0], {from: delegate2});
+
+      const { yea, nay } = await voting.getVote(voteId)
+
+      assert.equal(Number(yea), bigExp(51+29, decimals))
+      assert.equal(Number(nay), bigExp(20+1, decimals))
+
+
+      const voterState1 = await voting.getVotersStateAtVote(voteId, delegatedVotersData1[0])
+      const voterState2 = await voting.getVotersStateAtVote(voteId, delegatedVotersData2[0])
+
+      assertArraysEqualAsSets(voterState1.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_NAY])
+      assertArraysEqualAsSets(voterState2.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_YEA])
+
+    })
   })
 
   context('delegation state management', () => {
