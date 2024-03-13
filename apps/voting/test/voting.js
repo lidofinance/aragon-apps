@@ -910,13 +910,23 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
     const minimumAcceptanceQuorum = pct16(20)
     const decimals = 18
 
+    const LDO1 = bigExp(1, decimals)
+    const LDO20 = bigExp(20, decimals)
+    const LDO29 = bigExp(29, decimals)
+    const LDO51 = bigExp(51, decimals)
+    const initBalance = {
+      [holder1]: LDO1,
+      [holder20]: LDO20,
+      [holder29]: LDO29,
+      [holder51]: LDO51,
+    }
+
     beforeEach(async () => {
       token = await MiniMeToken.new(ZERO_ADDRESS, ZERO_ADDRESS, 0, 'n', decimals, 'n', true) // empty parameters minime
+      for (const [holder, balance] of Object.entries(initBalance)){
+        await token.generateTokens(holder, balance)
+      }
 
-      await token.generateTokens(holder20, bigExp(20, decimals))
-      await token.generateTokens(holder29, bigExp(29, decimals))
-      await token.generateTokens(holder51, bigExp(51, decimals))
-      await token.generateTokens(holder1, bigExp(1, decimals))
       await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, votingDuration, 0)
 
       executionTarget = await ExecutionTarget.new()
@@ -997,54 +1007,103 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
     // power to a single delegate. The voting starts and the delegate is voting for all of them - first
     // they get the full list of voters with their balance snapshot and vote states of the given voting,
     // then they vote for that list.
-    it('delegate can manage several voters and vote for them', async () => {
-      await voting.setDelegate(delegate1, {from: holder1})
-      await voting.setDelegate(delegate1, {from: holder20})
-      await voting.setDelegate(delegate2, {from: holder29})
-      await voting.setDelegate(delegate2, {from: holder51})
+    it('delegate can manage several voters and voteFor all', async () => {
+      const delegateList= [ [delegate1, holder1], [delegate1, holder20] ]
 
       await voting.unsafelyChangeVoteTime(1500)
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
 
-      let { snapshotBlock } = await voting.getVote(voteId)
-      await new Promise( (resolve) => web3.eth.currentProvider.send(
+      const error = await new Promise( (resolve) => web3.eth.currentProvider.send(
           { method: "evm_mine", params: [], id: 42, jsonrpc: "2.0"}, resolve)
       )
+      assert.equal(error, null, `mine was unsuccessful, reason - ${error}`)
 
-      const currentBlock = await web3.eth.getBlockNumber()
-      assert.isBelow(Number(snapshotBlock), currentBlock)
+      await token.generateTokens(holder1, bigExp(2, decimals))
 
-      await token.generateTokens(holder1, bigExp(11, decimals))
+      const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate1, 0, 3, voteId)
 
-      const delegatedVotersData1 = await voting.getDelegatedVotersAtVote(delegate1, 0, 3, voteId)
-      const delegatedVotersData2 = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
+      assertArraysEqualAsSets(delegatedVotersData[0], [holder1,holder20])
 
-      assert.equal(delegatedVotersData1[0].length, 2)
-      assert.equal(delegatedVotersData2[0].length, 2)
-
-      for (const holder of delegatedVotersData1[0]) {
+      const supports = false
+      for (const holder of delegatedVotersData[0]) {
         assert.equal(await voting.canVote(voteId, holder), true, 'should be able to vote')
-        // await voting.vote(voteId, true, false, { from: holder })
-        await voting.attemptVoteFor(voteId, false, holder, {from: delegate1})
+        const tx = await voting.attemptVoteFor(voteId, supports, holder, {from: delegate1})
+        assertEvent(tx, 'CastVote', {
+          expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
+        })
+        assertEvent(tx, 'CastVoteAsDelegate', {
+          expectedArgs: {voteId: voteId, delegate: delegate1, voter: holder, supports: supports, stake: initBalance[holder]}
+        })
+        assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
+        assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
       }
-
-      for (const holder of delegatedVotersData2[0]) {
-        assert.equal(await voting.canVote(voteId, holder), true, 'should be able to vote')
-      }
-      await voting.attemptVoteForMultiple(voteId, true, delegatedVotersData2[0], {from: delegate2});
 
       const { yea, nay } = await voting.getVote(voteId)
 
-      assert.equal(Number(yea), bigExp(51+29, decimals))
-      assert.equal(Number(nay), bigExp(20+1, decimals))
+      assert.equal(Number(yea), 0)
+      assert.equal(Number(nay), LDO1.add(LDO20))
 
-      const voterState1 = await voting.getVotersStateAtVote(voteId, delegatedVotersData1[0])
-      const voterState2 = await voting.getVotersStateAtVote(voteId, delegatedVotersData2[0])
+      const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
 
-      assertArraysEqualAsSets(voterState1.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_NAY])
-      assertArraysEqualAsSets(voterState2.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_YEA])
+      assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_NAY])
     })
+
+    it('delegate can manage several voters and voteMorMulti ', async () => {
+      const delegateList= [ [delegate2, holder29], [delegate2, holder51] ]
+      for (const [delegate, holder] of delegateList) {
+        const tx = await voting.setDelegate(delegate, {from: holder})
+        assertEvent(tx, 'SetDelegate', {
+          expectedArgs: {voter: holder, delegate}
+        })
+        assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+      }
+
+      const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
+
+      const error = await new Promise( (resolve) => web3.eth.currentProvider.send(
+          { method: "evm_mine", params: [], id: 42, jsonrpc: "2.0"}, resolve)
+      )
+      assert.equal(error, null, `block mine was unsuccessful, reason - ${error}`)
+
+      await token.generateTokens(holder1, bigExp(2, decimals))
+
+      const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
+
+      assertArraysEqualAsSets(delegatedVotersData[0], [holder29,holder51])
+
+      for (const holder of delegatedVotersData[0]) {
+        assert.equal(await voting.canVote(voteId, holder), true, 'should be able to vote')
+      }
+      const supports = true
+
+      const tx = await voting.attemptVoteForMultiple(voteId, true, delegatedVotersData[0], {from: delegate2})
+
+      for (const index of Object.keys(delegatedVotersData[0])){
+        const holder = delegatedVotersData[0][index]
+        assertEvent(tx, 'CastVote', {
+          index,
+          expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
+        })
+        assertEvent(tx, 'CastVoteAsDelegate', {
+          index,
+          expectedArgs: {voteId: voteId, delegate: delegate2, voter: holder, supports: supports, stake: initBalance[holder]}
+        })
+      }
+      assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 2})
+      assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 2})
+
+      const { yea, nay } = await voting.getVote(voteId)
+
+      assert.equal(Number(yea), LDO51.add(LDO29))
+      assert.equal(Number(nay), 0)
+
+      const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
+
+      assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_YEA])
+    })
+
+
 
     // Multiple voters with non-zero balances of governance token are delegating their voting
     // power to a single delegate. The voting starts and the delegate is voting for one of them.
@@ -1066,9 +1125,6 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       const currentBlock = await web3.eth.getBlockNumber()
       assert.isBelow(Number(snapshotBlock), currentBlock)
 
-      // not working with getDelegatedVotersAtVote
-      // await voting.mockIncreaseTime(1)
-      // await voting.setDelegate(delegate2, {from: holder20})
 
       const delegatedVotersData1 = await voting.getDelegatedVotersAtVote(delegate1, 0, 3, voteId)
       const delegatedVotersData2 = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
