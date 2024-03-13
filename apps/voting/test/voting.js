@@ -1015,9 +1015,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       const currentBlock = await web3.eth.getBlockNumber()
       assert.isBelow(Number(snapshotBlock), currentBlock)
 
-      // not working with getDelegatedVotersAtVote
-      // await voting.mockIncreaseTime(1)
-      // await voting.setDelegate(delegate2, {from: holder20})
+      await token.generateTokens(holder1, bigExp(11, decimals))
 
       const delegatedVotersData1 = await voting.getDelegatedVotersAtVote(delegate1, 0, 3, voteId)
       const delegatedVotersData2 = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
