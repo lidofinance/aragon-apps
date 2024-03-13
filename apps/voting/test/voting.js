@@ -1521,6 +1521,102 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
 
       assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_YEA])
     })
+
+    // A delegate can vote for all their delegated voters even if delegate voted for them before
+    // for different option (change mind)
+    it('delegate change mind (voteFor)', async () => {
+      const delegateList = [[delegate1, holder1], [delegate1, holder20]]
+
+      for (const [delegate, holder] of delegateList) {
+        const tx = await voting.setDelegate(delegate, {from: holder})
+        assertEvent(tx, 'SetDelegate', {
+          expectedArgs: {voter: holder, delegate}
+        })
+        assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+      }
+
+      const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
+
+      const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate1, 0, 3, voteId)
+
+      assertArraysEqualAsSets(delegatedVotersData[0], [holder1, holder20])
+
+      for (const supports of [false, true]) {
+        for (const holder of delegatedVotersData[0]) {
+          const tx = await voting.attemptVoteFor(voteId, supports, holder, {from: delegate1})
+          assertEvent(tx, 'CastVote', {
+            expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
+          })
+          assertEvent(tx, 'CastVoteAsDelegate', {
+            expectedArgs: {
+              voteId: voteId,
+              delegate: delegate1,
+              voter: holder,
+              supports: supports,
+              stake: initBalance[holder]
+            }
+          })
+          assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
+          assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
+        }
+      }
+
+      const { yea, nay } = await voting.getVote(voteId)
+
+      assert.equal(Number(yea), LDO1.add(LDO20))
+      assert.equal(Number(nay), 0)
+
+      const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
+
+      assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_YEA])
+    })
+
+    // A delegate can vote for all their delegated voters even if delegate voted for them before
+    // for different option (change mind)
+    it('delegate change mind (voteForMulti)', async () => {
+      const delegateList= [ [delegate2, holder29], [delegate2, holder51] ]
+      for (const [delegate, holder] of delegateList) {
+        const tx = await voting.setDelegate(delegate, {from: holder})
+        assertEvent(tx, 'SetDelegate', {
+          expectedArgs: {voter: holder, delegate}
+        })
+        assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+      }
+
+      const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
+
+      const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
+
+      assertArraysEqualAsSets(delegatedVotersData[0], [holder29,holder51])
+
+      for (const supports of [true, false]) {
+        const tx = await voting.attemptVoteForMultiple(voteId, supports, delegatedVotersData[0], {from: delegate2})
+
+        for (const index of Object.keys(delegatedVotersData[0])){
+          const holder = delegatedVotersData[0][index]
+          assertEvent(tx, 'CastVote', {
+            index,
+            expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
+          })
+          assertEvent(tx, 'CastVoteAsDelegate', {
+            index,
+            expectedArgs: {voteId: voteId, delegate: delegate2, voter: holder, supports: supports, stake: initBalance[holder]}
+          })
+        }
+        assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 2})
+        assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 2})
+      }
+      const { yea, nay } = await voting.getVote(voteId)
+
+      assert.equal(Number(yea), 0)
+      assert.equal(Number(nay), LDO51.add(LDO29))
+
+      const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
+
+      assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_NAY])
+    })
+
+
     ///end
   })
 
