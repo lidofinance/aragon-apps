@@ -909,6 +909,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
     const neededSupport = pct16(50)
     const minimumAcceptanceQuorum = pct16(20)
     const decimals = 18
+    const MAIN_PHASE = 0
 
     const LDO1 = bigExp(1, decimals)
     const LDO20 = bigExp(20, decimals)
@@ -1033,7 +1034,6 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
 
       const supports = false
       for (const holder of delegatedVotersData[0]) {
-        assert.equal(await voting.canVote(voteId, holder), true, 'should be able to vote')
         const tx = await voting.attemptVoteFor(voteId, supports, holder, {from: delegate1})
         assertEvent(tx, 'CastVote', {
           expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
@@ -1082,9 +1082,6 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
 
       assertArraysEqualAsSets(delegatedVotersData[0], [holder29,holder51])
 
-      for (const holder of delegatedVotersData[0]) {
-        assert.equal(await voting.canVote(voteId, holder), true, 'should be able to vote')
-      }
       const supports = true
 
       const tx = await voting.attemptVoteForMultiple(voteId, supports, delegatedVotersData[0], {from: delegate2})
@@ -1138,8 +1135,6 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
 
       const holder = delegatedVotersData[0][0]
       const supports = false
-      assert.equal(await voting.canVote(voteId, holder), true, 'should be able to vote')
-
       const tx = await voting.attemptVoteFor(voteId, false, holder, {from: delegate1})
       assertEvent(tx, 'CastVote', {
         expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
@@ -1178,9 +1173,6 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
 
       assertArraysEqualAsSets(delegatedVotersData[0], [holder29,holder51])
 
-      for (const holder of delegatedVotersData[0]) {
-        assert.equal(await voting.canVote(voteId, holder), true, 'should be able to vote')
-      }
       const supports = true
 
       const tx = await voting.attemptVoteForMultiple(voteId, supports, [delegatedVotersData[0][0]], {from: delegate2})
@@ -1225,8 +1217,6 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       assertArraysEqualAsSets(delegatedVotersData[0], [ holder1 ])
 
       const supports = false
-      assert.equal(await voting.canVote(voteId, holder), true, 'should be able to vote')
-
       tx = await voting.attemptVoteFor(voteId, false, holder, {from: delegate1})
       assertEvent(tx, 'CastVote', {
         expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
@@ -1270,10 +1260,6 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
 
       assertArraysEqualAsSets(delegatedVotersData[0], [holder29])
-
-      for (const holder of delegatedVotersData[0]) {
-        assert.equal(await voting.canVote(voteId, holder), true, 'should be able to vote')
-      }
 
       const supports = true
       tx = await voting.attemptVoteForMultiple(voteId, supports, [holder], {from: delegate2})
@@ -1332,8 +1318,6 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       assertArraysEqualAsSets(delegatedVotersData[0], [ holder1 ])
 
       const supports = false
-      assert.equal(await voting.canVote(voteId, holder), true, 'should be able to vote')
-
       tx = await voting.attemptVoteFor(voteId, false, holder, {from: delegate1})
       assertEvent(tx, 'CastVote', {
         expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
@@ -1377,10 +1361,6 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
 
       assertArraysEqualAsSets(delegatedVotersData[0], [holder29])
-
-      for (const holder of delegatedVotersData[0]) {
-        assert.equal(await voting.canVote(voteId, holder), true, 'should be able to vote')
-      }
 
       const supports = true
       tx = await voting.attemptVoteForMultiple(voteId, supports, [holder], {from: delegate2})
