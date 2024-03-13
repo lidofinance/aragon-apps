@@ -1150,8 +1150,8 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       const voterState1 = await voting.getVotersStateAtVote(voteId, [holderD1])
       const voterState2 = await voting.getVotersStateAtVote(voteId, [holderD2])
 
-      assertArraysEqualAsSets(voterState1.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_YEA])
-      assertArraysEqualAsSets(voterState2.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_NAY])
+      assertArraysEqualAsSets(voterState1.map(voterState => Number(voterState)), [VOTER_STATE.YEA])
+      assertArraysEqualAsSets(voterState2.map(voterState => Number(voterState)), [VOTER_STATE.NAY])
     })
   })
 
