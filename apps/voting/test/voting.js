@@ -1155,9 +1155,9 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       assert.equal(Number(yea), 0)
       assert.equal(Number(nay), LDO1)
 
-      const voterState1 = await voting.getVotersStateAtVote(voteId, [holder])
+      const voterState = await voting.getVotersStateAtVote(voteId, [holder])
 
-      assertArraysEqualAsSets(voterState1.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_NAY])
+      assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_NAY])
     })
 
     // Multiple voters with non-zero balances of governance token are delegating their voting
@@ -1249,9 +1249,9 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       assert.equal(Number(yea), LDO1)
       assert.equal(Number(nay), 0)
 
-      const voterState1 = await voting.getVotersStateAtVote(voteId, [holder])
+      const voterState = await voting.getVotersStateAtVote(voteId, [holder])
 
-      assertArraysEqualAsSets(voterState1.map(voterState => Number(voterState)), [VOTER_STATE.YEA])
+      assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.YEA])
     })
 
     // A delegated voter can overwrite a delegate's vote.
