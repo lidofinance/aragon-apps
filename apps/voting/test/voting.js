@@ -1021,13 +1021,6 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
 
-      const error = await new Promise( (resolve) => web3.eth.currentProvider.send(
-          { method: "evm_mine", params: [], id: 42, jsonrpc: "2.0"}, resolve)
-      )
-      assert.equal(error, null, `mine was unsuccessful, reason - ${error}`)
-
-      await token.generateTokens(holder1, bigExp(2, decimals))
-
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate1, 0, 3, voteId)
 
       assertArraysEqualAsSets(delegatedVotersData[0], [holder1,holder20])
@@ -1070,13 +1063,6 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
-
-      const error = await new Promise( (resolve) => web3.eth.currentProvider.send(
-          { method: "evm_mine", params: [], id: 42, jsonrpc: "2.0"}, resolve)
-      )
-      assert.equal(error, null, `block mine was unsuccessful, reason - ${error}`)
-
-      await token.generateTokens(holder1, bigExp(2, decimals))
 
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
 
@@ -1442,6 +1428,99 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
 
     })
 
+    // If a delegated voter lost or gain some voting power after the start of the vote, a delegate
+    // would still apply the full voting power of the delegated voter (at the vote's snapshot)
+    it('delegate vote by snapshot vp not current (voteFor)', async () => {
+      const delegateList= [ [delegate1, holder1], [delegate1, holder20] ]
+
+      for (const [delegate, holder] of delegateList) {
+        const tx = await voting.setDelegate(delegate, {from: holder})
+        assertEvent(tx, 'SetDelegate', {
+          expectedArgs: {voter: holder, delegate}
+        })
+        assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+      }
+
+      const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
+
+      await token.generateTokens(holder1, bigExp(2, decimals))
+      await token.destroyTokens(holder20, bigExp(5, decimals))
+
+      const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate1, 0, 3, voteId)
+
+      assertArraysEqualAsSets(delegatedVotersData[0], [holder1,holder20])
+
+      const supports = false
+      for (const holder of delegatedVotersData[0]) {
+        const tx = await voting.attemptVoteFor(voteId, supports, holder, {from: delegate1})
+        assertEvent(tx, 'CastVote', {
+          expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
+        })
+        assertEvent(tx, 'CastVoteAsDelegate', {
+          expectedArgs: {voteId: voteId, delegate: delegate1, voter: holder, supports: supports, stake: initBalance[holder]}
+        })
+        assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
+        assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
+      }
+
+      const { yea, nay } = await voting.getVote(voteId)
+
+      assert.equal(Number(yea), 0)
+      assert.equal(Number(nay), LDO1.add(LDO20))
+
+      const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
+
+      assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_NAY])
+    })
+
+    // If a delegated voter lost or gain some voting power after the start of the vote, a delegate
+    // would still apply the full voting power of the delegated voter (at the vote's snapshot)
+    it('delegate vote by snapshot vp not current (voteForMulti)', async () => {
+      const delegateList= [ [delegate2, holder29], [delegate2, holder51] ]
+      for (const [delegate, holder] of delegateList) {
+        const tx = await voting.setDelegate(delegate, {from: holder})
+        assertEvent(tx, 'SetDelegate', {
+          expectedArgs: {voter: holder, delegate}
+        })
+        assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+      }
+
+      const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
+
+      await token.generateTokens(holder29, bigExp(2, decimals))
+      await token.destroyTokens(holder51, bigExp(5, decimals))
+
+      const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
+
+      assertArraysEqualAsSets(delegatedVotersData[0], [holder29,holder51])
+
+      const supports = true
+
+      const tx = await voting.attemptVoteForMultiple(voteId, supports, delegatedVotersData[0], {from: delegate2})
+
+      for (const index of Object.keys(delegatedVotersData[0])){
+        const holder = delegatedVotersData[0][index]
+        assertEvent(tx, 'CastVote', {
+          index,
+          expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
+        })
+        assertEvent(tx, 'CastVoteAsDelegate', {
+          index,
+          expectedArgs: {voteId: voteId, delegate: delegate2, voter: holder, supports: supports, stake: initBalance[holder]}
+        })
+      }
+      assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 2})
+      assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 2})
+
+      const { yea, nay } = await voting.getVote(voteId)
+
+      assert.equal(Number(yea), LDO51.add(LDO29))
+      assert.equal(Number(nay), 0)
+
+      const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
+
+      assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_YEA])
+    })
     ///end
   })
 
