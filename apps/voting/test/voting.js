@@ -1387,6 +1387,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
 
       assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_YEA])
     })
+    ///end
   })
 
   context('delegation state management', () => {
