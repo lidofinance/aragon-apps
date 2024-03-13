@@ -1302,9 +1302,9 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       assert.equal(Number(yea), 0)
       assert.equal(Number(nay), LDO29)
 
-      const voterState2 = await voting.getVotersStateAtVote(voteId, [holder])
+      const voterState = await voting.getVotersStateAtVote(voteId, [holder])
 
-      assertArraysEqualAsSets(voterState2.map(voterState => Number(voterState)), [VOTER_STATE.NAY])
+      assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.NAY])
     })
 
     // A delegate can vote for a voter that delegated them their voting power during the active
