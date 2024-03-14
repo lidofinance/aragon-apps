@@ -922,6 +922,55 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       [holder51]: LDO51,
     }
 
+    const setDelegate = async (delegate, holder ) => {
+      const tx = await voting.setDelegate(delegate, {from: holder})
+      assertEvent(tx, 'SetDelegate', {
+        expectedArgs: {voter: holder, delegate}
+      })
+      assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+    }
+    const attemptVoteFor = async (voteId, supports, holder, delegate) => {
+      const tx = await voting.attemptVoteFor(voteId, supports, holder, {from: delegate})
+      assertEvent(tx, 'CastVote', {
+        expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
+      })
+      assertEvent(tx, 'CastVoteAsDelegate', {
+        expectedArgs: {voteId: voteId, delegate: delegate, voter: holder, supports: supports, stake: initBalance[holder]}
+      })
+      assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
+      assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
+    }
+    const attemptVoteForMultiple = async (voteId, supports, holders, delegate) => {
+      const tx = await voting.attemptVoteForMultiple(voteId, supports, holders, {from: delegate})
+
+      for (const index of Object.keys(holders)){
+        const holder = holders[index]
+        assertEvent(tx, 'CastVote', {
+          index,
+          expectedArgs: {voteId, voter: holder, supports, stake: initBalance[holder]}
+        })
+        assertEvent(tx, 'CastVoteAsDelegate', {
+          index,
+          expectedArgs: {voteId, delegate, voter: holder, supports, stake: initBalance[holder]}
+        })
+      }
+      assertAmountOfEvents(tx, 'CastVote', {expectedAmount: holders.length})
+      assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: holders.length})
+    }
+    const vote = async (voteId, supports, exec, holder) => {
+      const tx = await voting.vote(voteId, supports, exec, {from: holder})
+      assertEvent(tx, 'CastVote', {
+        expectedArgs: {voteId: voteId, voter: holder, supports, stake: initBalance[holder]}
+      })
+      assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
+    }
+    const verifyVoteYN = async (voteId, yes, no) => {
+      const { yea, nay } = await voting.getVote(voteId)
+
+      assert.equal(yea.toString(), yes.toString())
+      assert.equal(nay.toString(), no.toString())
+    }
+
     beforeEach(async () => {
       token = await MiniMeToken.new(ZERO_ADDRESS, ZERO_ADDRESS, 0, 'n', decimals, 'n', true) // empty parameters minime
       for (const [holder, balance] of Object.entries(initBalance)){
@@ -1012,40 +1061,21 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       const delegateList= [ [delegate1, holder1], [delegate1, holder20] ]
 
       for (const [delegate, holder] of delegateList) {
-        const tx = await voting.setDelegate(delegate, {from: holder})
-        assertEvent(tx, 'SetDelegate', {
-          expectedArgs: {voter: holder, delegate}
-        })
-        assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+        setDelegate(delegate, holder)
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
 
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate1, 0, 3, voteId)
-
       assertArraysEqualAsSets(delegatedVotersData[0], [holder1,holder20])
 
-      const supports = false
       for (const holder of delegatedVotersData[0]) {
-        const tx = await voting.attemptVoteFor(voteId, supports, holder, {from: delegate1})
-        assertEvent(tx, 'CastVote', {
-          expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
-        })
-        assertEvent(tx, 'CastVoteAsDelegate', {
-          expectedArgs: {voteId: voteId, delegate: delegate1, voter: holder, supports: supports, stake: initBalance[holder]}
-        })
-        assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
-        assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
+        await attemptVoteFor(voteId, false, holder, delegate1)
       }
 
-      const { yea, nay } = await voting.getVote(voteId)
-
-      assert.equal(Number(yea), 0)
-      assert.equal(Number(nay), LDO1.add(LDO20))
-
+      await verifyVoteYN(voteId, 0, LDO1.add(LDO20))
       const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
-
-      assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_NAY])
+      assertArraysEqualAsSets(voterState, [VOTER_STATE.DELEGATE_NAY.toString()])
     })
 
     // Multiple voters with non-zero balances of governance token are delegating their voting
@@ -1055,11 +1085,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
     it('delegate can manage several voters and vote all (voteForMulti)', async () => {
       const delegateList= [ [delegate2, holder29], [delegate2, holder51] ]
       for (const [delegate, holder] of delegateList) {
-        const tx = await voting.setDelegate(delegate, {from: holder})
-        assertEvent(tx, 'SetDelegate', {
-          expectedArgs: {voter: holder, delegate}
-        })
-        assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+        await setDelegate(delegate, holder)
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
@@ -1069,31 +1095,11 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       assertArraysEqualAsSets(delegatedVotersData[0], [holder29,holder51])
 
       const supports = true
-
-      const tx = await voting.attemptVoteForMultiple(voteId, supports, delegatedVotersData[0], {from: delegate2})
-
-      for (const index of Object.keys(delegatedVotersData[0])){
-        const holder = delegatedVotersData[0][index]
-        assertEvent(tx, 'CastVote', {
-          index,
-          expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
-        })
-        assertEvent(tx, 'CastVoteAsDelegate', {
-          index,
-          expectedArgs: {voteId: voteId, delegate: delegate2, voter: holder, supports: supports, stake: initBalance[holder]}
-        })
-      }
-      assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 2})
-      assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 2})
-
-      const { yea, nay } = await voting.getVote(voteId)
-
-      assert.equal(Number(yea), LDO51.add(LDO29))
-      assert.equal(Number(nay), 0)
+      await attemptVoteForMultiple(voteId, supports, delegatedVotersData[0], delegate2)
+      await verifyVoteYN(voteId, LDO51.add(LDO29), 0)
 
       const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
-
-      assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_YEA])
+      assertArraysEqualAsSets(voterState, [VOTER_STATE.DELEGATE_YEA.toString()])
     })
 
     // Multiple voters with non-zero balances of governance token are delegating their voting
@@ -1102,43 +1108,22 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       const delegateList= [ [delegate1, holder1], [delegate1, holder20] ]
 
       for (const [delegate, holder] of delegateList) {
-        const tx = await voting.setDelegate(delegate, {from: holder})
-        assertEvent(tx, 'SetDelegate', {
-          expectedArgs: {voter: holder, delegate}
-        })
-        assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+        setDelegate(delegate, holder)
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
 
-      const error = await new Promise( (resolve) => web3.eth.currentProvider.send(
-          { method: "evm_mine", params: [], id: 42, jsonrpc: "2.0"}, resolve)
-      )
-      assert.equal(error, null, `mine was unsuccessful, reason - ${error}`)
-
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate1, 0, 3, voteId)
-      assertArraysEqualAsSets(delegatedVotersData[0], [holder1,holder20])
+      assertArraysEqualAsSets(delegatedVotersData[0], [holder1, holder20])
 
       const holder = delegatedVotersData[0][0]
-      const supports = false
-      const tx = await voting.attemptVoteFor(voteId, supports, holder, {from: delegate1})
-      assertEvent(tx, 'CastVote', {
-        expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
-      })
-      assertEvent(tx, 'CastVoteAsDelegate', {
-        expectedArgs: {voteId: voteId, delegate: delegate1, voter: holder, supports: supports, stake: initBalance[holder]}
-      })
-      assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
-      assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
+      await attemptVoteFor(voteId, false, holder, delegate1)
 
-      const { yea, nay } = await voting.getVote(voteId)
-
-      assert.equal(Number(yea), 0)
-      assert.equal(Number(nay), LDO1)
+      await verifyVoteYN(voteId, 0, LDO1)
 
       const voterState = await voting.getVotersStateAtVote(voteId, [holder])
 
-      assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_NAY])
+      assertArraysEqualAsSets(voterState, [VOTER_STATE.DELEGATE_NAY.toString()])
     })
 
     // Multiple voters with non-zero balances of governance token are delegating their voting
@@ -1146,56 +1131,29 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
     it('delegate can manage several voters and vote for first (voteForMulti)', async () => {
       const delegateList= [ [delegate2, holder29], [delegate2, holder51] ]
       for (const [delegate, holder] of delegateList) {
-        const tx = await voting.setDelegate(delegate, {from: holder})
-        assertEvent(tx, 'SetDelegate', {
-          expectedArgs: {voter: holder, delegate}
-        })
-        assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+        setDelegate(delegate, holder)
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
 
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
 
-      assertArraysEqualAsSets(delegatedVotersData[0], [holder29,holder51])
+      assertArraysEqualAsSets(delegatedVotersData[0], [ holder29, holder51 ])
 
-      const supports = true
+      const holder =  delegatedVotersData[0][0]
+      await attemptVoteForMultiple(voteId, true, [holder], delegate2)
 
-      const tx = await voting.attemptVoteForMultiple(voteId, supports, [delegatedVotersData[0][0]], {from: delegate2})
-
-      const index = 0
-      const holder = delegatedVotersData[0][index]
-      assertEvent(tx, 'CastVote', {
-        index,
-        expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
-      })
-      assertEvent(tx, 'CastVoteAsDelegate', {
-        index,
-        expectedArgs: {voteId: voteId, delegate: delegate2, voter: holder, supports: supports, stake: initBalance[holder]}
-      })
-
-      assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
-      assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
-
-      const { yea, nay } = await voting.getVote(voteId)
-
-      assert.equal(Number(yea), LDO29)
-      assert.equal(Number(nay), 0)
+      await verifyVoteYN(voteId, LDO29, 0)
 
       const voterState = await voting.getVotersStateAtVote(voteId, [holder])
-
-      assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_YEA])
+      assertArraysEqualAsSets(voterState, [VOTER_STATE.DELEGATE_YEA.toString()])
     })
 
     // A delegated voter can overwrite a delegate's vote.
     it('delegated voter can overwrite a delegates vote (voteFor)', async () => {
       const [ delegate, holder] = [ delegate1, holder1 ]
 
-      let tx = await voting.setDelegate(delegate, {from: holder})
-      assertEvent(tx, 'SetDelegate', {
-        expectedArgs: {voter: holder, delegate}
-      })
-      assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+      setDelegate(delegate, holder)
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
 
@@ -1203,79 +1161,36 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       assertArraysEqualAsSets(delegatedVotersData[0], [ holder1 ])
 
       const supports = false
-      tx = await voting.attemptVoteFor(voteId, supports, holder, {from: delegate1})
-      assertEvent(tx, 'CastVote', {
-        expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
-      })
-      assertEvent(tx, 'CastVoteAsDelegate', {
-        expectedArgs: {voteId: voteId, delegate: delegate1, voter: holder, supports: supports, stake: initBalance[holder]}
-      })
-      assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
-      assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
+      await attemptVoteFor(voteId, supports, holder, delegate1)
 
-      tx = await voting.vote(voteId, !supports, false, {from: holder})
-      assertEvent(tx, 'CastVote', {
-        expectedArgs: {voteId: voteId, voter: holder, supports: !supports, stake: initBalance[holder]}
-      })
-      assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
+      await vote( voteId, !supports, false, holder)
 
-      const { yea, nay } = await voting.getVote(voteId)
-
-      assert.equal(Number(yea), LDO1)
-      assert.equal(Number(nay), 0)
+      await verifyVoteYN(voteId, LDO1, 0)
 
       const voterState = await voting.getVotersStateAtVote(voteId, [holder])
 
-      assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.YEA])
+      assertArraysEqualAsSets(voterState, [VOTER_STATE.YEA.toString()])
     })
 
     // A delegated voter can overwrite a delegate's vote.
     it('delegated voter can overwrite a delegates vote (voteForMulti)', async () => {
       const [ delegate, holder] = [ delegate2, holder29 ]
 
-      let tx = await voting.setDelegate(delegate, {from: holder})
-      assertEvent(tx, 'SetDelegate', {
-        expectedArgs: {voter: holder, delegate}
-      })
-      assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+      await setDelegate(delegate, holder)
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
-
 
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
 
       assertArraysEqualAsSets(delegatedVotersData[0], [holder29])
+      const  supports = true
+      await attemptVoteForMultiple(voteId, supports, [holder], delegate2)
 
-      const supports = true
-      tx = await voting.attemptVoteForMultiple(voteId, supports, [holder], {from: delegate2})
-
-      const index = 0
-      assertEvent(tx, 'CastVote', {
-        index,
-        expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
-      })
-      assertEvent(tx, 'CastVoteAsDelegate', {
-        index,
-        expectedArgs: {voteId: voteId, delegate: delegate2, voter: holder, supports: supports, stake: initBalance[holder]}
-      })
-
-      assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
-      assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
-
-      tx = await voting.vote(voteId, !supports, false, {from: holder})
-      assertEvent(tx, 'CastVote', {
-        expectedArgs: {voteId: voteId, voter: holder, supports: !supports, stake: initBalance[holder]}
-      })
-      assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
-
-      const { yea, nay } = await voting.getVote(voteId)
-
-      assert.equal(Number(yea), 0)
-      assert.equal(Number(nay), LDO29)
-
+      await vote(voteId, !supports, false, holder)
+      await verifyVoteYN(voteId, 0 , LDO29)
       const voterState = await voting.getVotersStateAtVote(voteId, [holder])
 
-      assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.NAY])
+      assertArraysEqualAsSets(voterState, [VOTER_STATE.NAY.toString()])
     })
 
     // A delegate can vote for a voter that delegated them their voting power during the active
@@ -1283,44 +1198,24 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
     it('delegate can vote for a voter that delegated them their voting power during the active phase (voteFor)', async () => {
       const [ delegate, holder] = [ delegate2, holder1 ]
 
-      let tx = await voting.setDelegate(delegate, {from: holder})
-      assertEvent(tx, 'SetDelegate', {
-        expectedArgs: {voter: holder, delegate}
-      })
-      assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+      await setDelegate(delegate, holder)
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
       const { phase } = await voting.getVote(voteId)
       assert.equal(phase, MAIN_PHASE)
 
-      tx = await voting.setDelegate(delegate1, {from: holder})
-      assertEvent(tx, 'SetDelegate', {
-        expectedArgs: {voter: holder, delegate: delegate1}
-      })
-      assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
-
+      await setDelegate(delegate1, holder)
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate1, 0, 3, voteId)
       assertArraysEqualAsSets(delegatedVotersData[0], [ holder1 ])
 
       const supports = false
-      tx = await voting.attemptVoteFor(voteId, supports, holder, {from: delegate1})
-      assertEvent(tx, 'CastVote', {
-        expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
-      })
-      assertEvent(tx, 'CastVoteAsDelegate', {
-        expectedArgs: {voteId: voteId, delegate: delegate1, voter: holder, supports: supports, stake: initBalance[holder]}
-      })
-      assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
-      assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
+      await attemptVoteFor(voteId, supports, holder, delegate1)
 
-      const { yea, nay } = await voting.getVote(voteId)
-
-      assert.equal(Number(yea), 0)
-      assert.equal(Number(nay), LDO1)
+      await verifyVoteYN(voteId, 0, LDO1)
 
       const voterState = await voting.getVotersStateAtVote(voteId, [holder])
 
-      assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_NAY])
+      assertArraysEqualAsSets(voterState, [VOTER_STATE.DELEGATE_NAY.toString()])
     })
 
     // A delegate can vote for a voter that delegated them their voting power during the active
@@ -1328,70 +1223,35 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
     it('delegate can vote for a voter that delegated them their voting power during the active phase (voteForMulti)', async () => {
       const [ delegate, holder] = [ delegate1, holder29 ]
 
-      let tx = await voting.setDelegate(delegate, {from: holder})
-      assertEvent(tx, 'SetDelegate', {
-        expectedArgs: {voter: holder, delegate}
-      })
-      assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+      await setDelegate(delegate, holder)
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
       const { phase } = await voting.getVote(voteId)
       assert.equal(phase, MAIN_PHASE)
 
-      tx = await voting.setDelegate(delegate2, {from: holder})
-      assertEvent(tx, 'SetDelegate', {
-        expectedArgs: {voter: holder, delegate: delegate2}
-      })
-      assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+      await setDelegate(delegate2, holder)
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
-
       assertArraysEqualAsSets(delegatedVotersData[0], [holder29])
 
-      const supports = true
-      tx = await voting.attemptVoteForMultiple(voteId, supports, [holder], {from: delegate2})
-
-      const index = 0
-      assertEvent(tx, 'CastVote', {
-        index,
-        expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
-      })
-      assertEvent(tx, 'CastVoteAsDelegate', {
-        index,
-        expectedArgs: {voteId: voteId, delegate: delegate2, voter: holder, supports: supports, stake: initBalance[holder]}
-      })
-
-      assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
-      assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
-
-      const { yea, nay } = await voting.getVote(voteId)
-
-      assert.equal(Number(yea), LDO29)
-      assert.equal(Number(nay), 0)
+      await attemptVoteForMultiple(voteId, true, [holder], delegate2)
+      await verifyVoteYN(voteId, LDO29, 0)
 
       const voterState = await voting.getVotersStateAtVote(voteId, [holder])
 
-      assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_YEA])
+      assertArraysEqualAsSets(voterState, [VOTER_STATE.DELEGATE_YEA.toString()])
     })
 
     // A delegate can't vote for a voter that acquired voting power during the active phase of the vote.
     it('delegate cant vote for a voter that acquired voting power during the active phase of the vote (voteFor)', async () => {
       const [ delegate, holder] = [ delegate1, holder1 ]
 
-      let tx = await voting.setDelegate(delegate, {from: holder})
-      assertEvent(tx, 'SetDelegate', {
-        expectedArgs: {voter: holder, delegate}
-      })
-      assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+      await setDelegate(delegate, holder)
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
       const { phase } = await voting.getVote(voteId)
       assert.equal(phase, MAIN_PHASE)
 
-      tx = await voting.setDelegate(delegate2, {from: holder})
-      assertEvent(tx, 'SetDelegate', {
-        expectedArgs: {voter: holder, delegate: delegate2}
-      })
-      assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+      await setDelegate(delegate2,  holder)
 
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate1, 0, 3, voteId)
       assertArraysEqualAsSets(delegatedVotersData[0], [ ])
@@ -1404,27 +1264,18 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
     it('delegate cant vote for a voter that acquired voting power during the active phase of the vote (voteForMulti)', async () => {
       const [ delegate, holder] = [ delegate2, holder29 ]
 
-      let tx = await voting.setDelegate(delegate, {from: holder})
-      assertEvent(tx, 'SetDelegate', {
-        expectedArgs: {voter: holder, delegate}
-      })
-      assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+      await setDelegate(delegate, holder)
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
       const { phase } = await voting.getVote(voteId)
       assert.equal(phase, MAIN_PHASE)
 
-      tx = await voting.setDelegate(delegate1, {from: holder})
-      assertEvent(tx, 'SetDelegate', {
-        expectedArgs: {voter: holder, delegate: delegate1}
-      })
-      assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+      await setDelegate(delegate1, holder)
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
 
       assertArraysEqualAsSets(delegatedVotersData[0], [])
 
-      const supports = true
-      await assertRevert(voting.attemptVoteForMultiple(voteId, supports, [holder], {from: delegate2}), ERRORS.VOTING_CAN_NOT_VOTE_FOR)
+      await assertRevert(voting.attemptVoteForMultiple(voteId, true, [holder], {from: delegate2}), ERRORS.VOTING_CAN_NOT_VOTE_FOR)
 
     })
 
@@ -1434,11 +1285,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       const delegateList= [ [delegate1, holder1], [delegate1, holder20] ]
 
       for (const [delegate, holder] of delegateList) {
-        const tx = await voting.setDelegate(delegate, {from: holder})
-        assertEvent(tx, 'SetDelegate', {
-          expectedArgs: {voter: holder, delegate}
-        })
-        assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+        await setDelegate(delegate, holder)
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
@@ -1450,27 +1297,14 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
 
       assertArraysEqualAsSets(delegatedVotersData[0], [holder1,holder20])
 
-      const supports = false
       for (const holder of delegatedVotersData[0]) {
-        const tx = await voting.attemptVoteFor(voteId, supports, holder, {from: delegate1})
-        assertEvent(tx, 'CastVote', {
-          expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
-        })
-        assertEvent(tx, 'CastVoteAsDelegate', {
-          expectedArgs: {voteId: voteId, delegate: delegate1, voter: holder, supports: supports, stake: initBalance[holder]}
-        })
-        assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
-        assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
+        await attemptVoteFor(voteId, false, holder, delegate1)
       }
-
-      const { yea, nay } = await voting.getVote(voteId)
-
-      assert.equal(Number(yea), 0)
-      assert.equal(Number(nay), LDO1.add(LDO20))
+      await verifyVoteYN(voteId, 0, LDO1.add(LDO20))
 
       const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
 
-      assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_NAY])
+      assertArraysEqualAsSets(voterState, [VOTER_STATE.DELEGATE_NAY.toString()])
     })
 
     // If a delegated voter lost or gain some voting power after the start of the vote, a delegate
@@ -1478,11 +1312,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
     it('delegate vote by snapshot vp not current (voteForMulti)', async () => {
       const delegateList= [ [delegate2, holder29], [delegate2, holder51] ]
       for (const [delegate, holder] of delegateList) {
-        const tx = await voting.setDelegate(delegate, {from: holder})
-        assertEvent(tx, 'SetDelegate', {
-          expectedArgs: {voter: holder, delegate}
-        })
-        assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+        await setDelegate(delegate, holder)
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
@@ -1496,30 +1326,11 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
 
       const supports = true
 
-      const tx = await voting.attemptVoteForMultiple(voteId, supports, delegatedVotersData[0], {from: delegate2})
-
-      for (const index of Object.keys(delegatedVotersData[0])){
-        const holder = delegatedVotersData[0][index]
-        assertEvent(tx, 'CastVote', {
-          index,
-          expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
-        })
-        assertEvent(tx, 'CastVoteAsDelegate', {
-          index,
-          expectedArgs: {voteId: voteId, delegate: delegate2, voter: holder, supports: supports, stake: initBalance[holder]}
-        })
-      }
-      assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 2})
-      assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 2})
-
-      const { yea, nay } = await voting.getVote(voteId)
-
-      assert.equal(Number(yea), LDO51.add(LDO29))
-      assert.equal(Number(nay), 0)
+      await attemptVoteForMultiple(voteId, supports, delegatedVotersData[0], delegate2)
+      await verifyVoteYN(voteId, LDO51.add(LDO29), 0)
 
       const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
-
-      assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_YEA])
+      assertArraysEqualAsSets(voterState, [VOTER_STATE.DELEGATE_YEA.toString()])
     })
 
     // A delegate can vote for all their delegated voters even if delegate voted for them before
@@ -1528,11 +1339,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       const delegateList = [[delegate1, holder1], [delegate1, holder20]]
 
       for (const [delegate, holder] of delegateList) {
-        const tx = await voting.setDelegate(delegate, {from: holder})
-        assertEvent(tx, 'SetDelegate', {
-          expectedArgs: {voter: holder, delegate}
-        })
-        assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+        await setDelegate(delegate, holder)
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
@@ -1541,34 +1348,19 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
 
       assertArraysEqualAsSets(delegatedVotersData[0], [holder1, holder20])
 
-      for (const supports of [false, true]) {
-        for (const holder of delegatedVotersData[0]) {
-          const tx = await voting.attemptVoteFor(voteId, supports, holder, {from: delegate1})
-          assertEvent(tx, 'CastVote', {
-            expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
-          })
-          assertEvent(tx, 'CastVoteAsDelegate', {
-            expectedArgs: {
-              voteId: voteId,
-              delegate: delegate1,
-              voter: holder,
-              supports: supports,
-              stake: initBalance[holder]
-            }
-          })
-          assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
-          assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
-        }
+      for (const holder of delegatedVotersData[0]) {
+        await attemptVoteFor(voteId, false, holder, delegate1)
       }
+      await verifyVoteYN(voteId,0, LDO1.add(LDO20))
 
-      const { yea, nay } = await voting.getVote(voteId)
-
-      assert.equal(Number(yea), LDO1.add(LDO20))
-      assert.equal(Number(nay), 0)
+      for (const holder of delegatedVotersData[0]) {
+        await attemptVoteFor(voteId, true, holder, delegate1)
+      }
+      await verifyVoteYN(voteId, LDO1.add(LDO20), 0)
 
       const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
 
-      assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_YEA])
+      assertArraysEqualAsSets(voterState, [VOTER_STATE.DELEGATE_YEA.toString()])
     })
 
     // A delegate can vote for all their delegated voters even if delegate voted for them before
@@ -1576,11 +1368,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
     it('delegate change mind (voteForMulti)', async () => {
       const delegateList= [ [delegate2, holder29], [delegate2, holder51] ]
       for (const [delegate, holder] of delegateList) {
-        const tx = await voting.setDelegate(delegate, {from: holder})
-        assertEvent(tx, 'SetDelegate', {
-          expectedArgs: {voter: holder, delegate}
-        })
-        assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+        await setDelegate(delegate, holder)
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
@@ -1590,30 +1378,13 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       assertArraysEqualAsSets(delegatedVotersData[0], [holder29,holder51])
 
       for (const supports of [true, false]) {
-        const tx = await voting.attemptVoteForMultiple(voteId, supports, delegatedVotersData[0], {from: delegate2})
-
-        for (const index of Object.keys(delegatedVotersData[0])){
-          const holder = delegatedVotersData[0][index]
-          assertEvent(tx, 'CastVote', {
-            index,
-            expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
-          })
-          assertEvent(tx, 'CastVoteAsDelegate', {
-            index,
-            expectedArgs: {voteId: voteId, delegate: delegate2, voter: holder, supports: supports, stake: initBalance[holder]}
-          })
-        }
-        assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 2})
-        assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 2})
+        await attemptVoteForMultiple(voteId, supports, delegatedVotersData[0], delegate2)
       }
-      const { yea, nay } = await voting.getVote(voteId)
-
-      assert.equal(Number(yea), 0)
-      assert.equal(Number(nay), LDO51.add(LDO29))
+      await verifyVoteYN(voteId,  0, LDO51.add(LDO29))
 
       const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
 
-      assertArraysEqualAsSets(voterState.map(voterState => Number(voterState)), [VOTER_STATE.DELEGATE_NAY])
+      assertArraysEqualAsSets(voterState, [VOTER_STATE.DELEGATE_NAY.toString()])
     })
 
 
