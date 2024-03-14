@@ -1094,8 +1094,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
 
       assertArraysEqualAsSets(delegatedVotersData[0], [holder29,holder51])
 
-      const supports = true
-      await attemptVoteForMultiple(voteId, supports, delegatedVotersData[0], delegate2)
+      await attemptVoteForMultiple(voteId, true, delegatedVotersData[0], delegate2)
       await verifyVoteYN(voteId, LDO51.add(LDO29), 0)
 
       const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
@@ -1162,13 +1161,11 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
 
       const supports = false
       await attemptVoteFor(voteId, supports, holder, delegate1)
-
       await vote( voteId, !supports, false, holder)
 
       await verifyVoteYN(voteId, LDO1, 0)
 
       const voterState = await voting.getVotersStateAtVote(voteId, [holder])
-
       assertArraysEqualAsSets(voterState, [VOTER_STATE.YEA.toString()])
     })
 
@@ -1181,15 +1178,15 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
 
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
-
       assertArraysEqualAsSets(delegatedVotersData[0], [holder29])
+
       const  supports = true
       await attemptVoteForMultiple(voteId, supports, [holder], delegate2)
-
       await vote(voteId, !supports, false, holder)
-      await verifyVoteYN(voteId, 0 , LDO29)
-      const voterState = await voting.getVotersStateAtVote(voteId, [holder])
 
+      await verifyVoteYN(voteId, 0 , LDO29)
+
+      const voterState = await voting.getVotersStateAtVote(voteId, [holder])
       assertArraysEqualAsSets(voterState, [VOTER_STATE.NAY.toString()])
     })
 
@@ -1208,13 +1205,11 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate1, 0, 3, voteId)
       assertArraysEqualAsSets(delegatedVotersData[0], [ holder1 ])
 
-      const supports = false
-      await attemptVoteFor(voteId, supports, holder, delegate1)
+      await attemptVoteFor(voteId, false, holder, delegate1)
 
       await verifyVoteYN(voteId, 0, LDO1)
 
       const voterState = await voting.getVotersStateAtVote(voteId, [holder])
-
       assertArraysEqualAsSets(voterState, [VOTER_STATE.DELEGATE_NAY.toString()])
     })
 
@@ -1234,10 +1229,10 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       assertArraysEqualAsSets(delegatedVotersData[0], [holder29])
 
       await attemptVoteForMultiple(voteId, true, [holder], delegate2)
+
       await verifyVoteYN(voteId, LDO29, 0)
 
       const voterState = await voting.getVotersStateAtVote(voteId, [holder])
-
       assertArraysEqualAsSets(voterState, [VOTER_STATE.DELEGATE_YEA.toString()])
     })
 
@@ -1252,12 +1247,10 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       assert.equal(phase, MAIN_PHASE)
 
       await setDelegate(delegate2,  holder)
-
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate1, 0, 3, voteId)
       assertArraysEqualAsSets(delegatedVotersData[0], [ ])
 
-      const supports = false
-      await assertRevert(voting.attemptVoteFor(voteId, supports, holder, {from: delegate1}), ERRORS.VOTING_CAN_NOT_VOTE_FOR)
+      await assertRevert(voting.attemptVoteFor(voteId, false, holder, {from: delegate1}), ERRORS.VOTING_CAN_NOT_VOTE_FOR)
     })
 
     // A delegate can't vote for a voter that acquired voting power during the active phase of the vote.
@@ -1272,7 +1265,6 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
 
       await setDelegate(delegate1, holder)
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
-
       assertArraysEqualAsSets(delegatedVotersData[0], [])
 
       await assertRevert(voting.attemptVoteForMultiple(voteId, true, [holder], {from: delegate2}), ERRORS.VOTING_CAN_NOT_VOTE_FOR)
@@ -1294,7 +1286,6 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       await token.destroyTokens(holder20, bigExp(5, decimals))
 
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate1, 0, 3, voteId)
-
       assertArraysEqualAsSets(delegatedVotersData[0], [holder1,holder20])
 
       for (const holder of delegatedVotersData[0]) {
@@ -1303,7 +1294,6 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       await verifyVoteYN(voteId, 0, LDO1.add(LDO20))
 
       const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
-
       assertArraysEqualAsSets(voterState, [VOTER_STATE.DELEGATE_NAY.toString()])
     })
 
@@ -1321,12 +1311,9 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       await token.destroyTokens(holder51, bigExp(5, decimals))
 
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
-
       assertArraysEqualAsSets(delegatedVotersData[0], [holder29,holder51])
 
-      const supports = true
-
-      await attemptVoteForMultiple(voteId, supports, delegatedVotersData[0], delegate2)
+      await attemptVoteForMultiple(voteId, true, delegatedVotersData[0], delegate2)
       await verifyVoteYN(voteId, LDO51.add(LDO29), 0)
 
       const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
@@ -1359,7 +1346,6 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       await verifyVoteYN(voteId, LDO1.add(LDO20), 0)
 
       const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
-
       assertArraysEqualAsSets(voterState, [VOTER_STATE.DELEGATE_YEA.toString()])
     })
 
@@ -1374,16 +1360,16 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
 
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
-
       assertArraysEqualAsSets(delegatedVotersData[0], [holder29,holder51])
 
-      for (const supports of [true, false]) {
-        await attemptVoteForMultiple(voteId, supports, delegatedVotersData[0], delegate2)
-      }
-      await verifyVoteYN(voteId,  0, LDO51.add(LDO29))
+
+      await attemptVoteForMultiple(voteId, true, delegatedVotersData[0], delegate2)
+      await verifyVoteYN(voteId, LDO51.add(LDO29), 0)
+
+      await attemptVoteForMultiple(voteId, false, delegatedVotersData[0], delegate2)
+      await verifyVoteYN(voteId, 0, LDO51.add(LDO29))
 
       const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
-
       assertArraysEqualAsSets(voterState, [VOTER_STATE.DELEGATE_NAY.toString()])
     })
 
