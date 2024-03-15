@@ -35,8 +35,8 @@ contract Voting is IForwarder, AragonApp {
     string private constant ERROR_CAN_NOT_EXECUTE = "VOTING_CAN_NOT_EXECUTE";
     string private constant ERROR_CAN_NOT_FORWARD = "VOTING_CAN_NOT_FORWARD";
     string private constant ERROR_NO_VOTING_POWER = "VOTING_NO_VOTING_POWER";
-    string private constant ERROR_CHANGE_VOTE_TIME = "VOTING_VOTE_TIME_TOO_SMALL";
-    string private constant ERROR_CHANGE_OBJECTION_TIME = "VOTING_OBJ_TIME_TOO_BIG";
+    string private constant ERROR_VOTE_TIME_TOO_SMALL = "VOTING_VOTE_TIME_TOO_SMALL";
+    string private constant ERROR_OBJ_TIME_TOO_BIG = "VOTING_OBJ_TIME_TOO_BIG";
     string private constant ERROR_INIT_OBJ_TIME_TOO_BIG = "VOTING_INIT_OBJ_TIME_TOO_BIG";
     string private constant ERROR_CAN_NOT_VOTE_FOR = "VOTING_CAN_NOT_VOTE_FOR";
     string private constant ERROR_ZERO_ADDRESS_PASSED = "VOTING_ZERO_ADDRESS_PASSED";
@@ -167,7 +167,7 @@ contract Voting is IForwarder, AragonApp {
         external
         auth(UNSAFELY_MODIFY_VOTE_TIME_ROLE)
     {
-        require(_voteTime > objectionPhaseTime, ERROR_CHANGE_VOTE_TIME);
+        require(_voteTime > objectionPhaseTime, ERROR_VOTE_TIME_TOO_SMALL);
         voteTime = _voteTime;
 
         emit ChangeVoteTime(_voteTime);
@@ -181,7 +181,7 @@ contract Voting is IForwarder, AragonApp {
         external
         auth(UNSAFELY_MODIFY_VOTE_TIME_ROLE)
     {
-        require(voteTime > _objectionPhaseTime, ERROR_CHANGE_OBJECTION_TIME);
+        require(voteTime > _objectionPhaseTime, ERROR_OBJ_TIME_TOO_BIG);
         objectionPhaseTime = _objectionPhaseTime;
 
         emit ChangeObjectionPhaseTime(_objectionPhaseTime);
@@ -282,8 +282,9 @@ contract Voting is IForwarder, AragonApp {
         require(_isValidPhaseToVote(vote_, _supports), ERROR_CAN_NOT_VOTE);
         bool hasManagedToVote = false;
 
+        address voter;
         for (uint256 i = 0; i < _voters.length; ++i) {
-            address voter = _voters[i];
+            voter = _voters[i];
             require(_hasVotingPower(vote_, voter), ERROR_NO_VOTING_POWER);
             if (_canVoteFor(vote_, msg.sender, voter)) {
                 _vote(_voteId, _supports, voter, true);
@@ -495,6 +496,8 @@ contract Voting is IForwarder, AragonApp {
 
     /**
     * @dev Internal function to create a new vote
+    * @param _executionScript The execution script for the vote
+    * @param _metadata The metadata for the vote
     * @return voteId id for newly created vote
     */
     function _newVote(bytes _executionScript, string _metadata) internal returns (uint256 voteId) {
@@ -516,9 +519,13 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @dev Internal function to cast a vote or object to.
-      @dev It assumes that voter can support or object to the vote
-    */
+     * @dev Internal function to cast a vote or object to.
+     * @dev It assumes that voter can support or object to the vote
+     * @param _voteId The identifier of the vote
+     * @param _supports Whether the voter supports the vote or not
+     * @param _voter The address of the voter
+     * @param _isDelegate Whether the voter is a delegate or not
+     */
     function _vote(uint256 _voteId, bool _supports, address _voter, bool _isDelegate) internal {
         Vote storage vote_ = votes[_voteId];
 
@@ -554,6 +561,7 @@ contract Voting is IForwarder, AragonApp {
 
     /**
     * @dev Internal function to execute a vote. It assumes the queried vote exists.
+    * @param _voteId The identifier of the vote
     */
     function _executeVote(uint256 _voteId) internal {
         require(_canExecute(_voteId), ERROR_CAN_NOT_EXECUTE);
@@ -562,6 +570,7 @@ contract Voting is IForwarder, AragonApp {
 
     /**
     * @dev Unsafe version of _executeVote that assumes you have already checked if the vote can be executed and exists
+    * @param _voteId The identifier of the vote
     */
     function _unsafeExecuteVote(uint256 _voteId) internal {
         Vote storage vote_ = votes[_voteId];
@@ -613,6 +622,7 @@ contract Voting is IForwarder, AragonApp {
      * @param _delegate the address of the delegate
      * @param _offset the number of delegated voters from the start of the list to skip
      * @param _limit the number of delegated voters to return
+     * @param _blockNumber the block number to get the voting power
      * @return the array of delegated voters
      * @return the array of voting power of delegated voters
      */
@@ -628,8 +638,9 @@ contract Voting is IForwarder, AragonApp {
         uint256 returnCount = _offset.add(_limit) > delegatedVotersCount ? delegatedVotersCount.sub(_offset) : _limit;
         votersList = new address[](returnCount);
         votingPowerList = new uint256[](returnCount);
+        address voter;
         for (uint256 i = 0; i < returnCount; ++i) {
-            address voter = delegatedVoters[_delegate].addresses[_offset + i];
+            voter = delegatedVoters[_delegate].addresses[_offset + i];
             votersList[i] = voter;
             votingPowerList[i] = token.balanceOfAt(voter, _blockNumber);
         }
@@ -638,6 +649,7 @@ contract Voting is IForwarder, AragonApp {
 
     /**
     * @dev Internal function to check if a vote can be executed. It assumes the queried vote exists.
+    * @param _voteId The identifier of the vote
     * @return True if the given vote can be executed, false otherwise
     */
     function _canExecute(uint256 _voteId) internal view returns (bool) {
@@ -669,6 +681,8 @@ contract Voting is IForwarder, AragonApp {
     /**
     * @dev Internal function to check if the vote is open and given option is applicable at the current phase.
     *      It assumes the queried vote exists.
+    * @param _vote The queried vote
+    * @param _supports Whether the voter supports the vote or not
     * @return True if the given voter can participate a certain vote, false otherwise
     */
     function _isValidPhaseToVote(Vote storage _vote, bool _supports) internal view returns (bool) {
@@ -697,11 +711,12 @@ contract Voting is IForwarder, AragonApp {
 
     /**
     * @dev Internal function to get the current phase of the vote. It assumes the queried vote exists.
+    * @param _vote The queried vote
     * @return VotePhase.Main if one can vote 'yes' or 'no', VotePhase.Objection if one can vote only 'no' or VotePhase.Closed if no votes are accepted
     */
-    function _getVotePhase(Vote storage vote_) internal view returns (VotePhase) {
+    function _getVotePhase(Vote storage _vote) internal view returns (VotePhase) {
         uint64 timestamp = getTimestamp64();
-        uint64 voteTimeEnd = vote_.startDate.add(voteTime);
+        uint64 voteTimeEnd = _vote.startDate.add(voteTime);
         if (timestamp < voteTimeEnd.sub(objectionPhaseTime)) {
             return VotePhase.Main;
         }
@@ -713,14 +728,19 @@ contract Voting is IForwarder, AragonApp {
 
     /**
     * @dev Internal function to check if a vote is still open for both support and objection
+    * @param _vote The queried vote
     * @return True if less than voteTime has passed since the vote start
     */
-    function _isVoteOpen(Vote storage vote_) internal view returns (bool) {
-        return getTimestamp64() < vote_.startDate.add(voteTime) && !vote_.executed;
+    function _isVoteOpen(Vote storage _vote) internal view returns (bool) {
+        return getTimestamp64() < _vote.startDate.add(voteTime) && !_vote.executed;
     }
 
     /**
     * @dev Calculates whether `_value` is more than a percentage `_pct` of `_total`
+    * @param _value The value to compare
+    * @param _total The total value
+    * @param _pct The percentage to compare
+    * @return True if `_value` is more than a percentage `_pct` of `_total`, false otherwise
     */
     function _isValuePct(uint256 _value, uint256 _total, uint256 _pct) internal pure returns (bool) {
         if (_total == 0) {
