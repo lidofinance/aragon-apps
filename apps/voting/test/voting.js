@@ -909,7 +909,9 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
     const neededSupport = pct16(50)
     const minimumAcceptanceQuorum = pct16(20)
     const decimals = 18
+
     const MAIN_PHASE = 0
+    const OBJECTION_PHASE = 1
 
     const LDO1 = bigExp(1, decimals)
     const LDO20 = bigExp(20, decimals)
@@ -977,7 +979,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
         await token.generateTokens(holder, balance)
       }
 
-      await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, votingDuration, 0)
+      await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, votingDuration, objectionPhase)
 
       executionTarget = await ExecutionTarget.new()
     })
@@ -1371,6 +1373,205 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
 
       const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
       assertArraysEqualAsSets(voterState, [VOTER_STATE.DELEGATE_NAY.toString()])
+    })
+
+    // A delegate can vote for all their delegated voters even if delegate voted for them before
+    // for "no" option during the objection phase.(change mind)
+    it('delegate vote "yes" in main phase, delegate vote "no" in objection (voteFor)', async () => {
+      const delegateList = [[delegate1, holder1], [delegate1, holder20]]
+
+      for (const [delegate, holder] of delegateList) {
+        await setDelegate(delegate, holder)
+      }
+
+      const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
+
+      const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate1, 0, 3, voteId)
+      assertArraysEqualAsSets(delegatedVotersData[0], [holder1, holder20])
+
+      for (const holder of delegatedVotersData[0]) {
+        await attemptVoteFor(voteId, true, holder, delegate1)
+      }
+
+      await voting.mockIncreaseTime(votingDuration - objectionPhase)
+      await verifyVoteYN(voteId, LDO1.add(LDO20), 0)
+
+      const { phase } = await voting.getVote(voteId)
+      assert.equal(phase, OBJECTION_PHASE)
+
+      for (const holder of delegatedVotersData[0]) {
+        await attemptVoteFor(voteId, false, holder, delegate1)
+      }
+      await verifyVoteYN(voteId, 0, LDO1.add(LDO20))
+
+      const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
+      assertArraysEqualAsSets(voterState, [VOTER_STATE.DELEGATE_NAY.toString()])
+    })
+
+    // A delegate can vote for all their delegated voters even if delegate voted for them before
+    // for "no" option during the objection phase.(change mind)
+    it('delegate vote "yes" in main phase, delegate vote "no" in objection (voteForMulti)', async () => {
+      const delegateList= [ [delegate2, holder29], [delegate2, holder51] ]
+      for (const [delegate, holder] of delegateList) {
+        await setDelegate(delegate, holder)
+      }
+
+      const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
+
+      const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
+      assertArraysEqualAsSets(delegatedVotersData[0], [holder29,holder51])
+
+      await attemptVoteForMultiple(voteId, true, delegatedVotersData[0], delegate2)
+
+      await voting.mockIncreaseTime(votingDuration - objectionPhase)
+      await verifyVoteYN(voteId, LDO51.add(LDO29), 0)
+
+      const { phase } = await voting.getVote(voteId)
+      assert.equal(phase, OBJECTION_PHASE)
+
+      await attemptVoteForMultiple(voteId, false, delegatedVotersData[0], delegate2)
+
+      await verifyVoteYN(voteId, 0, LDO51.add(LDO29))
+
+      const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
+      assertArraysEqualAsSets(voterState, [VOTER_STATE.DELEGATE_NAY.toString()])
+    })
+
+    // A new delegate can vote "no" in objection phase for all their delegated voters
+    // even if old delegate voted for "yes" them before
+    it('delegate vote "yes" in main phase, new delegate vote "no" in objection (voteFor)', async () => {
+      const delegateList = [[delegate1, holder1], [delegate1, holder20]]
+
+      for (const [delegate, holder] of delegateList) {
+        await setDelegate(delegate, holder)
+      }
+
+      const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
+
+      const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate1, 0, 3, voteId)
+      assertArraysEqualAsSets(delegatedVotersData[0], [holder1, holder20])
+
+      for (const holder of delegatedVotersData[0]) {
+        await attemptVoteFor(voteId, true, holder, delegate1)
+      }
+
+      await voting.mockIncreaseTime(votingDuration - objectionPhase)
+      await verifyVoteYN(voteId, LDO1.add(LDO20), 0)
+
+      const { phase } = await voting.getVote(voteId)
+      assert.equal(phase, OBJECTION_PHASE)
+
+      const objectorList = [[delegate2, holder1], [delegate2, holder20]]
+
+      for (const [delegate, holder] of objectorList) {
+        await setDelegate(delegate, holder)
+      }
+
+      for (const [ delegate , holder] of objectorList) {
+        await attemptVoteFor(voteId, false, holder, delegate)
+      }
+      await verifyVoteYN(voteId, 0, LDO1.add(LDO20))
+
+      const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
+      assertArraysEqualAsSets(voterState, [VOTER_STATE.DELEGATE_NAY.toString()])
+    })
+
+    // A new delegate can vote "no" in objection phase for all their delegated voters
+    // even if old delegate voted for "yes" them before
+    it('delegate vote "yes" in main phase, new delegate vote "no" in objection (voteForMulti)', async () => {
+      const delegateList= [ [delegate2, holder29], [delegate2, holder51] ]
+      for (const [delegate, holder] of delegateList) {
+        await setDelegate(delegate, holder)
+      }
+
+      const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
+
+      const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
+      assertArraysEqualAsSets(delegatedVotersData[0], [holder29,holder51])
+
+      await attemptVoteForMultiple(voteId, true, delegatedVotersData[0], delegate2)
+
+      await voting.mockIncreaseTime(votingDuration - objectionPhase)
+      await verifyVoteYN(voteId, LDO51.add(LDO29), 0)
+
+      const { phase } = await voting.getVote(voteId)
+      assert.equal(phase, OBJECTION_PHASE)
+
+      const objectorList = [[delegate1, holder29], [delegate1, holder51]]
+
+      for (const [delegate, holder] of objectorList) {
+        await setDelegate(delegate, holder)
+      }
+
+      await attemptVoteForMultiple(voteId, false, delegatedVotersData[0], delegate1)
+
+      await verifyVoteYN(voteId, 0, LDO51.add(LDO29))
+
+      const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
+      assertArraysEqualAsSets(voterState, [VOTER_STATE.DELEGATE_NAY.toString()])
+    })
+
+    // A delegate is voting "yea" at the last moment of a vote's main phase. Delegated voters
+    // should be able to overpower the delegate during the objection phase.
+    it('delegate vote in main phase, voter overpower in objection (voteFor)', async () => {
+      const delegateList = [[delegate1, holder1], [delegate1, holder20]]
+
+      for (const [delegate, holder] of delegateList) {
+        await setDelegate(delegate, holder)
+      }
+
+      const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
+
+      const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate1, 0, 3, voteId)
+      assertArraysEqualAsSets(delegatedVotersData[0], [holder1, holder20])
+
+      for (const holder of delegatedVotersData[0]) {
+        await attemptVoteFor(voteId, true, holder, delegate1)
+      }
+
+      await voting.mockIncreaseTime(votingDuration - objectionPhase)
+      await verifyVoteYN(voteId, LDO1.add(LDO20), 0)
+
+      const { phase } = await voting.getVote(voteId)
+      assert.equal(phase, OBJECTION_PHASE)
+
+      for (const holder of delegatedVotersData[0]) {
+        await vote(voteId, false, false, holder)
+      }
+      await verifyVoteYN(voteId, 0, LDO1.add(LDO20))
+
+      const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
+      assertArraysEqualAsSets(voterState, [VOTER_STATE.NAY.toString()])
+    })
+
+    // A delegate is voting "yea" at the last moment of a vote's main phase. Delegated voters
+    // should be able to overpower the delegate during the objection phase.
+    it('delegate vote in main phase, voter overpower in objection (voteForMulti)', async () => {
+      const delegateList= [ [delegate2, holder29], [delegate2, holder51] ]
+      for (const [delegate, holder] of delegateList) {
+        await setDelegate(delegate, holder)
+      }
+
+      const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
+
+      const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
+      assertArraysEqualAsSets(delegatedVotersData[0], [holder29,holder51])
+
+      await attemptVoteForMultiple(voteId, true, delegatedVotersData[0], delegate2)
+
+      await voting.mockIncreaseTime(votingDuration - objectionPhase)
+      await verifyVoteYN(voteId, LDO51.add(LDO29), 0)
+
+      const { phase } = await voting.getVote(voteId)
+      assert.equal(phase, OBJECTION_PHASE)
+
+      for (const holder of delegatedVotersData[0]) {
+        await vote(voteId, false, false, holder)
+      }
+      await verifyVoteYN(voteId, 0, LDO51.add(LDO29))
+
+      const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
+      assertArraysEqualAsSets(voterState, [VOTER_STATE.NAY.toString()])
     })
 
 
