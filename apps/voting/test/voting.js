@@ -917,6 +917,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
     const LDO20 = bigExp(20, decimals)
     const LDO29 = bigExp(29, decimals)
     const LDO51 = bigExp(51, decimals)
+    const LDO3 = bigExp(3, decimals)
     const initBalance = {
       [holder1]: LDO1,
       [holder20]: LDO20,
@@ -947,13 +948,20 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
 
       for (const index of Object.keys(holders)){
         const holder = holders[index]
+        let stake
+        if (initBalance[holder]) {
+          stake = initBalance[holder]
+        }
+        if (!stake && spamHolders.includes(holder)) {
+          stake = LDO3
+        }
         assertEvent(tx, 'CastVote', {
           index,
-          expectedArgs: {voteId, voter: holder, supports, stake: initBalance[holder]}
+          expectedArgs: {voteId, voter: holder, supports, stake}
         })
         assertEvent(tx, 'CastVoteAsDelegate', {
           index,
-          expectedArgs: {voteId, delegate, voter: holder, supports, stake: initBalance[holder]}
+          expectedArgs: {voteId, delegate, voter: holder, supports, stake}
         })
       }
       assertAmountOfEvents(tx, 'CastVote', {expectedAmount: holders.length})
@@ -1573,7 +1581,38 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       const voterState = await voting.getVotersStateAtVote(voteId, delegatedVotersData[0])
       assertArraysEqualAsSets(voterState, [VOTER_STATE.NAY.toString()])
     })
+    //If a delegate was spammed by a large amount of fake delegated voters, they can still easily
+    // retrieve an actual voters list and vote for that list.
+    it('delegate can manage several voters and vote all (voteForMulti)', async () => {
+      await setDelegate(delegate2, holder29)
+      for (const holder of spamHolders) {
+        await token.generateTokens(holder, LDO3)
+        await setDelegate(delegate2, holder)
+      }
+      await setDelegate(delegate2, holder51)
 
+      const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
+
+      const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate2, 0, 600, voteId)
+      assertArraysEqualAsSets(delegatedVotersData[0], [holder29, ...spamHolders, holder51])
+
+      let blockLimitError
+      try{
+        await attemptVoteForMultiple(voteId, true, delegatedVotersData[0], delegate2)
+      } catch (err) {
+        blockLimitError = err
+      }
+      assert.equal(blockLimitError?.message, 'Transaction reverted without a reason string')
+      await attemptVoteForMultiple(voteId, true, [holder29, holder51], delegate2)
+
+      await verifyVoteYN(voteId, LDO51.add(LDO29), 0)
+
+      const voterState = await voting.getVotersStateAtVote(voteId, [holder29, holder51])
+      assertArraysEqualAsSets(voterState, [VOTER_STATE.DELEGATE_YEA.toString()])
+
+      const voterStateSpam = await voting.getVotersStateAtVote(voteId, spamHolders)
+      assertArraysEqualAsSets(voterStateSpam, [VOTER_STATE.ABSENT.toString()])
+    }).timeout(40_000);
 
     ///end
   })
