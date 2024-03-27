@@ -18,7 +18,8 @@ const ETH_ACCOUNT_NAME = process.env.ETH_ACCOUNT_NAME
 const accounts = readJson(`./accounts.json`) || {
   eth: { dev: 'remote' },
   etherscan: { apiKey: undefined },
-  infura: { projectId: undefined }
+  infura: { projectId: undefined },
+  drpc: {key: undefined},
 }
 
 const getNetConfig = (networkName, ethAccountName) => {
@@ -64,6 +65,12 @@ const getNetConfig = (networkName, ethAccountName) => {
       chainId: 1,
       timeout: 60000 * 10
     },
+    holesky: {
+      ...base,
+      url: 'https://lb.drpc.org/ogrpc?network=holesky&dkey=' + accounts.drpc.key,
+      chainId: 17000,
+      timeout: 60000 * 10
+    }
   }
   const netConfig = byNetName[networkName]
   return netConfig ? { [networkName]: netConfig } : {}
