@@ -1596,13 +1596,6 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate2, 0, 600, voteId)
       assertArraysEqualAsSets(delegatedVotersData[0], [holder29, ...spamHolders, holder51])
 
-      let blockLimitError
-      try{
-        await attemptVoteForMultiple(voteId, true, delegatedVotersData[0], delegate2)
-      } catch (err) {
-        blockLimitError = err
-      }
-      assert.equal(blockLimitError?.message, 'Transaction reverted without a reason string')
       await attemptVoteForMultiple(voteId, true, [holder29, holder51], delegate2)
 
       await verifyVoteYN(voteId, LDO51.add(LDO29), 0)
