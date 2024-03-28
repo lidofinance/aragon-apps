@@ -1874,4 +1874,216 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       assert.equal(delegate, delegate1, 'should return delegate1 address')
     })
   })
+
+  context('voting as delegate', () => {
+    let script, voteId, creator, metadata
+
+    const neededSupport = pct16(50)
+    const minimumAcceptanceQuorum = pct16(20)
+    const decimals = 18
+    const voters = [{
+      account: holder1,
+      balance: bigExp(1, decimals)
+    }, {
+      account: holder2,
+      balance: bigExp(2, decimals)
+    }, {
+      account: holder20,
+      balance: bigExp(20, decimals)
+    }, {
+      account: holder29,
+      balance: bigExp(29, decimals)
+    }, {
+      account: holder51,
+      balance: bigExp(51, decimals)
+    }]
+
+    beforeEach(async () => {
+      token = await MiniMeToken.new(ZERO_ADDRESS, ZERO_ADDRESS, 0, 'n', decimals, 'n', true) // empty parameters minime
+
+      await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, votingDuration, objectionPhase)
+
+      for (let i = 0; i < voters.length; i++) {
+        await token.generateTokens(voters[i].account, voters[i].balance)
+        await voting.setDelegate(delegate1, {from: voters[i].account})
+      }
+
+      executionTarget = await ExecutionTarget.new()
+
+      const action = {to: executionTarget.address, calldata: executionTarget.contract.methods.execute().encodeABI()}
+      script = encodeCallScript([action, action])
+
+      await voting.resetDelegate({from: holder1})
+      await token.transfer(holder51, bigExp(2, decimals), { from: holder2 })
+
+      const receipt = await voting.methods['newVote(bytes,string)'](script, 'metadata', {from: holder51});
+      voteId = getEventArgument(receipt, 'StartVote', 'voteId')
+      creator = getEventArgument(receipt, 'StartVote', 'creator')
+      metadata = getEventArgument(receipt, 'StartVote', 'metadata')
+    })
+
+    it(`getVotersStateAtVote`, async () => {
+      await voting.vote(voteId, true, false, { from: holder20 })
+      await voting.vote(voteId, false, false, { from: holder29 })
+      await voting.attemptVoteForMultiple(voteId, false, [holder51], {from: delegate1})
+
+      const votersState = await voting.getVotersStateAtVote(voteId, [holder20, holder29, holder51])
+      assert.equal(votersState[0], VOTER_STATE.YEA, `holder20 should have 'yea' state`)
+      assert.equal(votersState[1], VOTER_STATE.NAY, `holder29 should have 'nay' state`)
+      assert.equal(votersState[2], VOTER_STATE.DELEGATE_NAY, `holder51 should have 'delegateNay' state`)
+    })
+
+    it(`revert if vote does not exist`, async () => {
+      await assertRevert(
+        voting.attemptVoteForMultiple(voteId + 1, false, [holder51], {from: delegate1}),
+        ERRORS.VOTING_NO_VOTE
+      )
+    })
+
+    it(`revert if vote has already ended`, async () => {
+      await voting.mockIncreaseTime(votingDuration + 1)
+      await assertRevert(
+        voting.attemptVoteForMultiple(voteId, false, [holder51], {from: delegate1}),
+        ERRORS.VOTING_CAN_NOT_VOTE
+      )
+    })
+
+    it(`revert if vote has already been executed`, async () => {
+      await voting.vote(voteId, true, true, { from: holder51 })
+      await voting.mockIncreaseTime(votingDuration + 1)
+      await voting.executeVote(voteId)
+
+      await assertRevert(
+        voting.attemptVoteForMultiple(voteId, true, [holder51], {from: delegate1}),
+        ERRORS.VOTING_CAN_NOT_VOTE
+      )
+    })
+
+    it(`revert if trying to vote 'yea' during objection phase`, async () => {
+      await voting.mockIncreaseTime(mainPhase + 200)
+      await assertRevert(
+        voting.attemptVoteForMultiple(voteId, true, [holder51], {from: delegate1}),
+        ERRORS.VOTING_CAN_NOT_VOTE
+      )
+    })
+
+    it(`revert if one of the voters has 0 LDO`, async () => {
+      // holder 2 has 0 LDO
+      await assertRevert(
+        voting.attemptVoteForMultiple(voteId, true, [holder51, holder2, holder1], {from: delegate1}),
+        ERRORS.VOTING_NO_VOTING_POWER
+      )
+    })
+
+    it(`one of the voters voted beforehand`, async () => {
+      await voting.vote(voteId, false, false, { from: holder29 })
+      const tx = await voting.attemptVoteForMultiple(voteId, true, [holder20, holder29], {from: delegate1});
+
+      assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
+      assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
+      assertEvent(tx, 'CastVote', {expectedArgs: {voteId, voter: holder20, supports: true}})
+      assertEvent(tx, 'CastVoteAsDelegate', {expectedArgs: {voteId, delegate: delegate1, voter: holder20, supports: true}})
+
+      assert.equal(await voting.getVoterState(voteId, holder29), VOTER_STATE.NAY, `holder29 should have 'nay' state`)
+      assert.equal(await voting.getVoterState(voteId, holder20), VOTER_STATE.DELEGATE_YEA, `holder20 should have 'delegateYea' state`)
+    })
+
+    it(`vote for multiple with duplicates`, async () => {
+      const tx = await voting.attemptVoteForMultiple(voteId, false, [holder29, holder29], {from: delegate1});
+
+      assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 2})
+      assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 2})
+      assert.equal(await voting.getVoterState(voteId, holder29), VOTER_STATE.DELEGATE_NAY, `holder29 should have 'delegateNay' state`)
+      const vote = await voting.getVote(voteId)
+      assertBn(vote.nay, bigExp(29, decimals), 'nay should be 29')
+    })
+
+    it(`vote for empty list`, async () => {
+      await assertRevert(
+        voting.attemptVoteForMultiple(voteId, false, [], {from: delegate1}),
+        ERRORS.VOTING_CAN_NOT_VOTE_FOR
+      )
+    })
+
+    it(`skipped vote for multiple for all voters from list`, async () => {
+      await voting.vote(voteId, false, false, { from: holder20 })
+      await voting.vote(voteId, false, false, { from: holder29 })
+      await assertRevert(
+        voting.attemptVoteForMultiple(voteId, false, [holder20, holder29], {from: delegate1}),
+        ERRORS.VOTING_CAN_NOT_VOTE_FOR
+      )
+    })
+
+    it(`successful vote for multiple`, async () => {
+      const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate1, 0, 100, voteId)
+      const delegatedVotersAddresses = delegatedVotersData[0]
+      const delegatedVotersVotingPower = delegatedVotersData[1]
+      const filteredDelegatedVoters = []
+      for (let i = 0; i < delegatedVotersAddresses.length; i++) {
+        const votingPower = delegatedVotersVotingPower[i]
+        if (votingPower.gt(bigExp(0, decimals))) {
+          filteredDelegatedVoters.push({address: delegatedVotersAddresses[i], votingPower})
+        }
+      }
+      const filteredDelegatedVotersAddresses = filteredDelegatedVoters.map(({address}) => address)
+      const tx = await voting.attemptVoteForMultiple(
+        voteId,
+        false,
+        filteredDelegatedVotersAddresses,
+        {from: delegate1}
+      );
+
+      // Check amount of events
+      assertAmountOfEvents(tx, 'CastVote', {expectedAmount: filteredDelegatedVoters.length})
+      assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: filteredDelegatedVoters.length})
+
+      // Check events content
+      for (let i = 0; i < filteredDelegatedVoters.length; i++) {
+        const {address, votingPower} = filteredDelegatedVoters[i]
+        assertEvent(tx, 'CastVote', {index: i, expectedArgs: {voteId, voter: address, supports: false, stake: votingPower}})
+        assertEvent(tx, 'CastVoteAsDelegate', {index: i, expectedArgs: {voteId, delegate: delegate1, voter: address, supports: false, stake: votingPower}})
+      }
+
+      // Check voters' state
+      const votersState = await voting.getVotersStateAtVote(voteId, filteredDelegatedVotersAddresses)
+      votersState.every((state) => {
+        assert.equal(state, VOTER_STATE.DELEGATE_NAY.toString(), `voter should have 'delegateNay' state`)
+      })
+
+      // Check applied VP
+      const vote = await voting.getVote(voteId)
+      const votingPowerSum = filteredDelegatedVoters.reduce(
+        (sum, {votingPower}) => sum.add(votingPower),
+        bigExp(0, decimals)
+      )
+
+      assertBn(vote.yea, bigExp(0, decimals), 'yea should be 0')
+      assertBn(vote.nay, votingPowerSum, 'nay should be sum of all VP')
+    })
+
+    it(`successful vote for single`, async () => {
+      const tx = await voting.attemptVoteFor(voteId, false, holder29, {from: delegate1})
+
+      // Check amount of events
+      assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
+      assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
+
+      const holder29VP = bigExp(29, decimals)
+
+      // Check events content
+      assertEvent(tx, 'CastVote', { expectedArgs: {voteId, voter: holder29, supports: false, stake: holder29VP}})
+      assertEvent(tx, 'CastVoteAsDelegate', { expectedArgs: {voteId, delegate: delegate1, voter: holder29, supports: false, stake: holder29VP}})
+
+
+      // Check voter's state
+      assert.equal(await voting.getVoterState(voteId, holder29), VOTER_STATE.DELEGATE_NAY, `holder29 should have 'delegateNay' state`)
+
+      // Check applied VP
+      const vote = await voting.getVote(voteId)
+      assertBn(vote.yea, bigExp(0, decimals), 'yea should be 0')
+      assertBn(vote.nay, holder29VP, 'nay should be holder29 VP')
+    })
+
+  })
+
 })
