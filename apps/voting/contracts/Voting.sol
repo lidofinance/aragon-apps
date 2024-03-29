@@ -678,12 +678,12 @@ contract Voting is IForwarder, AragonApp {
     /**
     * @dev Internal function to check if the vote is open and given option is applicable at the current phase.
     *      It assumes the queried vote exists.
-    * @param _vote The queried vote
+    * @param vote_ The queried vote
     * @param _supports Whether the voter supports the vote or not
     * @return True if the given voter can participate a certain vote, false otherwise
     */
-    function _isValidPhaseToVote(Vote storage _vote, bool _supports) internal view returns (bool) {
-        return _isVoteOpen(_vote) && (!_supports || _getVotePhase(_vote) == VotePhase.Main);
+    function _isValidPhaseToVote(Vote storage vote_, bool _supports) internal view returns (bool) {
+        return _isVoteOpen(vote_) && (!_supports || _getVotePhase(vote_) == VotePhase.Main);
     }
 
     function _isDelegateFor(address _delegate, address _voter) internal view returns (bool) {
@@ -693,27 +693,27 @@ contract Voting is IForwarder, AragonApp {
         return delegates[_voter].delegate == _delegate;
     }
 
-    function _canVoteFor(Vote storage _vote, address _delegate, address _voter) internal view returns (bool) {
-        return _isDelegateFor(_delegate, _voter) && !_hasVotedDirectly(_vote, _voter);
+    function _canVoteFor(Vote storage vote_, address _delegate, address _voter) internal view returns (bool) {
+        return _isDelegateFor(_delegate, _voter) && !_hasVotedDirectly(vote_, _voter);
     }
 
-    function _hasVotedDirectly(Vote storage _vote, address _voter) internal view returns (bool) {
-        VoterState state = _vote.voters[_voter];
+    function _hasVotedDirectly(Vote storage vote_, address _voter) internal view returns (bool) {
+        VoterState state = vote_.voters[_voter];
         return state == VoterState.Yea || state == VoterState.Nay;
     }
 
-    function _hasVotingPower(Vote storage _vote, address _voter) internal view returns (bool) {
-        return token.balanceOfAt(_voter, _vote.snapshotBlock) > 0;
+    function _hasVotingPower(Vote storage vote_, address _voter) internal view returns (bool) {
+        return token.balanceOfAt(_voter, vote_.snapshotBlock) > 0;
     }
 
     /**
     * @dev Internal function to get the current phase of the vote. It assumes the queried vote exists.
-    * @param _vote The queried vote
+    * @param vote_ The queried vote
     * @return VotePhase.Main if one can vote 'yes' or 'no', VotePhase.Objection if one can vote only 'no' or VotePhase.Closed if no votes are accepted
     */
-    function _getVotePhase(Vote storage _vote) internal view returns (VotePhase) {
+    function _getVotePhase(Vote storage vote_) internal view returns (VotePhase) {
         uint64 timestamp = getTimestamp64();
-        uint64 voteTimeEnd = _vote.startDate.add(voteTime);
+        uint64 voteTimeEnd = vote_.startDate.add(voteTime);
         if (timestamp < voteTimeEnd.sub(objectionPhaseTime)) {
             return VotePhase.Main;
         }
@@ -725,11 +725,11 @@ contract Voting is IForwarder, AragonApp {
 
     /**
     * @dev Internal function to check if a vote is still open for both support and objection
-    * @param _vote The queried vote
+    * @param vote_ The queried vote
     * @return True if less than voteTime has passed since the vote start
     */
-    function _isVoteOpen(Vote storage _vote) internal view returns (bool) {
-        return getTimestamp64() < _vote.startDate.add(voteTime) && !_vote.executed;
+    function _isVoteOpen(Vote storage vote_) internal view returns (bool) {
+        return getTimestamp64() < vote_.startDate.add(voteTime) && !vote_.executed;
     }
 
     /**
