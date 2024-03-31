@@ -202,11 +202,11 @@ contract Voting is IForwarder, AragonApp {
     * @dev  _executesIfDecided was deprecated to introduce a proper lock period between decision and execution.
     * @param _executionScript EVM script to be executed on approval
     * @param _metadata Vote metadata
-    * @param _castVote_deprecated Whether to also cast newly created vote
-    * @param _executesIfDecided_deprecated Whether to also immediately execute newly created vote if decided
+    * @dev _castVote_deprecated Whether to also cast newly created vote - DEPRECATED
+    * @dev _executesIfDecided_deprecated Whether to also immediately execute newly created vote if decided - DEPRECATED
     * @return voteId id for newly created vote
     */
-    function newVote(bytes _executionScript, string _metadata, bool _castVote_deprecated, bool _executesIfDecided_deprecated)
+    function newVote(bytes _executionScript, string _metadata, bool /* _castVote_deprecated */, bool /* _executesIfDecided_deprecated */)
         external
         auth(CREATE_VOTES_ROLE)
         returns (uint256 voteId)
@@ -221,9 +221,9 @@ contract Voting is IForwarder, AragonApp {
     * @dev  _executesIfDecided was deprecated to introduce a proper lock period between decision and execution.
     * @param _voteId Id for vote
     * @param _supports Whether voter supports the vote
-    * @param _executesIfDecided_deprecated Whether the vote should execute its action if it becomes decided
+    * @dev _executesIfDecided_deprecated Whether the vote should execute its action if it becomes decided - DEPRECATED
     */
-    function vote(uint256 _voteId, bool _supports, bool _executesIfDecided_deprecated) external voteExists(_voteId) {
+    function vote(uint256 _voteId, bool _supports, bool /* _executesIfDecided_deprecated */) external voteExists(_voteId) {
         Vote storage vote_ = votes[_voteId];
         require(_isValidPhaseToVote(vote_, _supports), ERROR_CAN_NOT_VOTE);
         require(_hasVotingPower(vote_, msg.sender), ERROR_NO_VOTING_POWER);
