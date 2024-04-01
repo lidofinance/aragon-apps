@@ -686,6 +686,12 @@ contract Voting is IForwarder, AragonApp {
         return _isVoteOpen(vote_) && (!_supports || _getVotePhase(vote_) == VotePhase.Main);
     }
 
+    /**
+    * @dev Internal function to check if the _delegate is a current delegate for the _voter
+    * @param _delegate address of the delegate
+    * @param _voter address of the voter
+    * @return True if _delegate is a current delegate for the _voter, false otherwise
+    */
     function _isDelegateFor(address _delegate, address _voter) internal view returns (bool) {
         if (_delegate == address(0) || _voter == address(0)) {
             return false;
@@ -693,15 +699,34 @@ contract Voting is IForwarder, AragonApp {
         return delegates[_voter].delegate == _delegate;
     }
 
+    /**
+    * @dev Internal function to check if the _delegate can vote on behalf of the _voter in the given vote
+    * @param vote_ The queried vote
+    * @param _delegate address of the delegate
+    * @param _voter address of the voter
+    * @return True if the _delegate can vote on behalf of the _voter in the given vote, false otherwise
+    */
     function _canVoteFor(Vote storage vote_, address _delegate, address _voter) internal view returns (bool) {
         return _isDelegateFor(_delegate, _voter) && !_hasVotedDirectly(vote_, _voter);
     }
 
+    /**
+    * @dev Internal function to check if the _voter has voted by themselves in the given vote
+    * @param vote_ The queried vote
+    * @param _voter address of the voter
+    * @return True if the _voter has voted by themselves in the given vote, false otherwise
+    */
     function _hasVotedDirectly(Vote storage vote_, address _voter) internal view returns (bool) {
         VoterState state = vote_.voters[_voter];
         return state == VoterState.Yea || state == VoterState.Nay;
     }
 
+    /**
+    * @dev Internal function to get the voter's token balance at the vote's snapshot block
+    * @param vote_ The queried vote
+    * @param _voter address of the voter
+    * @return The voter's token balance at the vote's snapshot block
+    */
     function _hasVotingPower(Vote storage vote_, address _voter) internal view returns (bool) {
         return token.balanceOfAt(_voter, vote_.snapshotBlock) > 0;
     }
