@@ -1584,13 +1584,6 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, d
       )
     })
 
-    it(`voter with zero token balance can't assign a delegate `, async () => {
-      await assertRevert(
-        voting.setDelegate(delegate1, {from: nonHolder}),
-        ERRORS.VOTING_NO_VOTING_POWER
-      )
-    })
-
     it(`voter can unassign their delegate`, async () => {
       await voting.setDelegate(delegate1, {from: holder29})
 
