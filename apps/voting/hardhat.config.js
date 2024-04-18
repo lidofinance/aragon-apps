@@ -40,8 +40,8 @@ const getNetConfig = (networkName, ethAccountName) => {
     dev,
     hardhat: {
       blockGasLimit: 20000000,
+      hardfork: 'cancun',
       accounts: {
-        mnemonic: 'hardhat',
         count: 500,
         accountsBalance: '100000000000000000000000',
         gasPrice: 0
