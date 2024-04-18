@@ -265,7 +265,6 @@ contract Voting is IForwarder, AragonApp {
         require(prevDelegate != address(0), ERROR_DELEGATE_NOT_SET);
 
         _removeDelegatedAddressFor(prevDelegate, msg.sender);
-        delete delegates[msg.sender];
     }
 
     /**
@@ -611,6 +610,7 @@ contract Voting is IForwarder, AragonApp {
             delegates[lastVoter].voterIndex = voterIndex;
         }
         delegatedVoters[_delegate].addresses.length--;
+        delete delegates[_voter];
         emit UnassignDelegate(_voter, _delegate);
     }
 
