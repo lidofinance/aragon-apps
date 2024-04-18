@@ -276,7 +276,7 @@ contract Voting is IForwarder, AragonApp {
     function attemptVoteForMultiple(uint256 _voteId, bool _supports, address[] _voters) public voteExists(_voteId) {
         Vote storage vote_ = votes[_voteId];
         require(_isValidPhaseToVote(vote_, _supports), ERROR_CAN_NOT_VOTE);
-        bool hasManagedToVote = false;
+        bool votedForAtLeastOne = false;
 
         address voter;
         for (uint256 i = 0; i < _voters.length; ++i) {
@@ -284,11 +284,11 @@ contract Voting is IForwarder, AragonApp {
             require(_hasVotingPower(vote_, voter), ERROR_NO_VOTING_POWER);
             if (_canVoteFor(vote_, msg.sender, voter)) {
                 _vote(_voteId, _supports, voter, true);
-                hasManagedToVote = true;
+                votedForAtLeastOne = true;
             }
         }
 
-        require(hasManagedToVote, ERROR_CAN_NOT_VOTE_FOR);
+        require(votedForAtLeastOne, ERROR_CAN_NOT_VOTE_FOR);
     }
 
     /**
