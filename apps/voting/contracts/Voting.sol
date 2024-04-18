@@ -307,7 +307,7 @@ contract Voting is IForwarder, AragonApp {
     // Forwarding fns
 
     /**
-    * @notice Tells whether the Voting app is a forwarder or not
+    * @notice Tells whether the Voting app is a forwarder
     * @dev IForwarder interface conformance
     * @return Always true
     */
@@ -326,7 +326,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @notice Tells whether `_sender` can forward actions or not
+    * @notice Tells whether `_sender` can forward actions
     * @dev IForwarder interface conformance
     * @param _sender Address of the account intending to forward an action
     * @return True if the given address can create votes, false otherwise
@@ -339,7 +339,7 @@ contract Voting is IForwarder, AragonApp {
     // Getter fns
 
     /**
-    * @notice Tells whether a vote #`_voteId` can be executed or not
+    * @notice Tells whether a vote #`_voteId` can be executed
     * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
     *      created via `newVote(),` which requires initialization
     * @param _voteId Vote identifier
@@ -519,9 +519,9 @@ contract Voting is IForwarder, AragonApp {
      * @dev Internal function to cast a vote or object to.
      * @dev It assumes that voter can support or object to the vote
      * @param _voteId The identifier of the vote
-     * @param _supports Whether the voter supports the vote or not
+     * @param _supports Whether the voter supports the vote
      * @param _voter The address of the voter
-     * @param _isDelegate Whether the voter is a delegate or not
+     * @param _isDelegate Whether the voter is a delegate
      */
     function _vote(uint256 _voteId, bool _supports, address _voter, bool _isDelegate) internal {
         Vote storage vote_ = votes[_voteId];
@@ -679,7 +679,7 @@ contract Voting is IForwarder, AragonApp {
     * @dev Internal function to check if the vote is open and given option is applicable at the current phase.
     *      It assumes the queried vote exists.
     * @param vote_ The queried vote
-    * @param _supports Whether the voter supports the vote or not
+    * @param _supports Whether the voter supports the vote
     * @return True if the given voter can participate a certain vote, false otherwise
     */
     function _isValidPhaseToVote(Vote storage vote_, bool _supports) internal view returns (bool) {
