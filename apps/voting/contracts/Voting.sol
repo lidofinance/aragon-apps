@@ -297,7 +297,7 @@ contract Voting is IForwarder, AragonApp {
      * @param _supports Whether the delegate supports the vote
      * @param _voter address of the voter
      */
-    function attemptVoteFor(uint256 _voteId, bool _supports, address _voter) external voteExists(_voteId) {
+    function attemptVoteFor(uint256 _voteId, bool _supports, address _voter) external {
         address[] memory voters = new address[](1);
         voters[0] = _voter;
         attemptVoteForMultiple(_voteId, _supports, voters);
