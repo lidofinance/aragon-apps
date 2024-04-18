@@ -604,8 +604,8 @@ contract Voting is IForwarder, AragonApp {
 
         uint96 voterIndex = delegates[_voter].voterIndex;
         assert(delegatedVoters[_delegate].addresses[voterIndex] == _voter);
-        address lastVoter = delegatedVoters[_delegate].addresses[delegatedVotersCount - 1];
         if (voterIndex < delegatedVotersCount - 1) {
+            address lastVoter = delegatedVoters[_delegate].addresses[delegatedVotersCount - 1];
             delegatedVoters[_delegate].addresses[voterIndex] = lastVoter;
             delegates[lastVoter].voterIndex = voterIndex;
         }
