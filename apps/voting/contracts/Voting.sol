@@ -24,7 +24,7 @@ contract Voting is IForwarder, AragonApp {
 
     uint64 public constant PCT_BASE = 10 ** 18; // 0% = 0; 1% = 10^16; 100% = 10^18
 
-    uint256 private constant UINT_96_MAX = 0xFFFFFFFFFFFFFFFFFFFFFFFF;
+    uint256 private constant UINT_96_MAX = 2 ** 96 - 1;
     string private constant ERROR_NO_VOTE = "VOTING_NO_VOTE";
     string private constant ERROR_INIT_PCTS = "VOTING_INIT_PCTS";
     string private constant ERROR_CHANGE_SUPPORT_PCTS = "VOTING_CHANGE_SUPPORT_PCTS";
