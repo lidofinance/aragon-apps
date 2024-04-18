@@ -96,8 +96,8 @@ contract Voting is IForwarder, AragonApp {
     event ChangeMinQuorum(uint64 minAcceptQuorumPct);
     event ChangeVoteTime(uint64 voteTime);
     event ChangeObjectionPhaseTime(uint64 objectionPhaseTime);
-    event SetDelegate(address indexed voter, address indexed delegate);
-    event ResetDelegate(address indexed voter, address indexed delegate);
+    event AssignDelegate(address indexed voter, address indexed delegate);
+    event UnassignDelegate(address indexed voter, address indexed unassignedDelegate);
     event CastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, address indexed voter, bool supports, uint256 stake);
 
     modifier voteExists(uint256 _voteId) {
@@ -244,7 +244,7 @@ contract Voting is IForwarder, AragonApp {
     * @notice Assign `_delegate` as the delegate for the sender
     * @param _delegate address to delegate to
     */
-    function setDelegate(address _delegate) external {
+    function assignDelegate(address _delegate) external {
         require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
         require(_delegate != msg.sender, ERROR_SELF_DELEGATE);
 
@@ -260,7 +260,7 @@ contract Voting is IForwarder, AragonApp {
     /**
     * @notice Unassign `_delegate` from the sender
     */
-    function resetDelegate() external {
+    function unassignDelegate() external {
         address prevDelegate = delegates[msg.sender].delegate;
         require(prevDelegate != address(0), ERROR_DELEGATE_NOT_SET);
 
@@ -591,7 +591,7 @@ contract Voting is IForwarder, AragonApp {
 
         delegatedVoters[_delegate].addresses.push(_voter);
         delegates[_voter] = Delegate(_delegate, uint96(delegatedVotersCount));
-        emit SetDelegate(_voter, _delegate);
+        emit AssignDelegate(_voter, _delegate);
     }
 
     /**
@@ -611,7 +611,7 @@ contract Voting is IForwarder, AragonApp {
             delegates[lastVoter].voterIndex = voterIndex;
         }
         delegatedVoters[_delegate].addresses.length--;
-        emit ResetDelegate(_voter, _delegate);
+        emit UnassignDelegate(_voter, _delegate);
     }
 
     /**

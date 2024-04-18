@@ -67,12 +67,12 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       [holder51]: LDO51,
     }
 
-    const setDelegate = async (delegate, holder ) => {
-      const tx = await voting.setDelegate(delegate, {from: holder})
-      assertEvent(tx, 'SetDelegate', {
+    const assignDelegate = async (delegate, holder ) => {
+      const tx = await voting.assignDelegate(delegate, {from: holder})
+      assertEvent(tx, 'AssignDelegate', {
         expectedArgs: {voter: holder, delegate}
       })
-      assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+      assertAmountOfEvents(tx, 'AssignDelegate', {expectedAmount: 1})
     }
     const attemptVoteFor = async (voteId, supports, holder, delegate) => {
       const tx = await voting.attemptVoteFor(voteId, supports, holder, {from: delegate})
@@ -136,29 +136,29 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
 
     it(`voter can't set the zero address as a delegate`, async () => {
       await assertRevert(
-        voting.setDelegate(ZERO_ADDRESS, {from: holder29}),
+        voting.assignDelegate(ZERO_ADDRESS, {from: holder29}),
         ERRORS.VOTING_ZERO_ADDRESS_PASSED
       )
     })
 
     it(`voter can't assign themself as a delegate`, async () => {
       await assertRevert(
-        voting.setDelegate(holder29, {from: holder29}),
+        voting.assignDelegate(holder29, {from: holder29}),
         ERRORS.VOTING_SELF_DELEGATE
       )
     })
 
     it(`voter can't assign their current delegate as a delegate`, async () => {
-      await voting.setDelegate(delegate1, {from: holder29})
+      await voting.assignDelegate(delegate1, {from: holder29})
       await assertRevert(
-        voting.setDelegate(delegate1, {from: holder29}),
+        voting.assignDelegate(delegate1, {from: holder29}),
         ERRORS.VOTING_DELEGATE_SAME_AS_PREV
       )
     })
 
     it(`voter can't unassign their delegate if they wasn't assigned before`, async () => {
       await assertRevert(
-        voting.resetDelegate({from: holder29}),
+        voting.unassignDelegate({from: holder29}),
         ERRORS.VOTING_DELEGATE_NOT_SET
       )
     })
@@ -167,11 +167,11 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       let delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, 1))[0]
       assert.equal(delegatedVoters.length, 0, 'delegate1 should not be a delegate of anyone')
 
-      const tx = await voting.setDelegate(delegate1, {from: holder29})
-      assertEvent(tx, 'SetDelegate', {
+      const tx = await voting.assignDelegate(delegate1, {from: holder29})
+      assertEvent(tx, 'AssignDelegate', {
         expectedArgs: {voter: holder29, delegate: delegate1}
       })
-      assertAmountOfEvents(tx, 'SetDelegate', {expectedAmount: 1})
+      assertAmountOfEvents(tx, 'AssignDelegate', {expectedAmount: 1})
 
       const delegate = await voting.getDelegate(holder29)
       assert.equal(delegate, delegate1, 'holder29 should have delegate1 as a delegate')
@@ -184,16 +184,16 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       let delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, 1))[0]
       assert.equal(delegatedVoters.length, 0, 'delegate1 should not be a delegate of anyone')
 
-      await voting.setDelegate(delegate1, {from: holder29})
+      await voting.assignDelegate(delegate1, {from: holder29})
 
       delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, 1))[0]
       assertArraysEqualAsSets(delegatedVoters, [holder29], 'delegate1 should be a delegate of holder29')
 
-      const tx = await voting.resetDelegate({from: holder29})
-      assertEvent(tx, 'ResetDelegate', {
-        expectedArgs: {voter: holder29, delegate: delegate1}
+      const tx = await voting.unassignDelegate({from: holder29})
+      assertEvent(tx, 'UnassignDelegate', {
+        expectedArgs: {voter: holder29, unassignedDelegate: delegate1}
       })
-      assertAmountOfEvents(tx, 'ResetDelegate', {expectedAmount: 1})
+      assertAmountOfEvents(tx, 'UnassignDelegate', {expectedAmount: 1})
       delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, 1))[0]
       assertArraysEqualAsSets(delegatedVoters, [], 'delegate1 should not be a delegate of anyone')
     })
@@ -202,23 +202,23 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       let delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, 1))[0]
       assert.equal(delegatedVoters.length, 0, 'delegate1 should not be a delegate of anyone')
 
-      await voting.setDelegate(delegate1, {from: holder20})
-      await voting.setDelegate(delegate1, {from: holder29})
-      await voting.setDelegate(delegate1, {from: holder51})
+      await voting.assignDelegate(delegate1, {from: holder20})
+      await voting.assignDelegate(delegate1, {from: holder29})
+      await voting.assignDelegate(delegate1, {from: holder51})
 
-      const tx1 = await voting.resetDelegate({from: holder29})
-      assertEvent(tx1, 'ResetDelegate', {
-        expectedArgs: {voter: holder29, delegate: delegate1}
+      const tx1 = await voting.unassignDelegate({from: holder29})
+      assertEvent(tx1, 'UnassignDelegate', {
+        expectedArgs: {voter: holder29, unassignedDelegate: delegate1}
       })
-      assertAmountOfEvents(tx1, 'ResetDelegate', {expectedAmount: 1})
+      assertAmountOfEvents(tx1, 'UnassignDelegate', {expectedAmount: 1})
       delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, 5))[0]
       assertArraysEqualAsSets(delegatedVoters, [holder20, holder51], 'delegate1 have holder20 and holder51 as a delegated voters')
 
-      const tx2 = await voting.resetDelegate({from: holder51})
-      assertEvent(tx2, 'ResetDelegate', {
-        expectedArgs: {voter: holder51, delegate: delegate1}
+      const tx2 = await voting.unassignDelegate({from: holder51})
+      assertEvent(tx2, 'UnassignDelegate', {
+        expectedArgs: {voter: holder51, unassignedDelegate: delegate1}
       })
-      assertAmountOfEvents(tx2, 'ResetDelegate', {expectedAmount: 1})
+      assertAmountOfEvents(tx2, 'UnassignDelegate', {expectedAmount: 1})
       delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, 1))[0]
       assertArraysEqualAsSets(delegatedVoters, [holder20], 'delegate1 have only holder20 as a delegated voter')
     })
@@ -229,10 +229,10 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       delegatedVoters = (await voting.getDelegatedVoters(delegate2, 0, 1))[0]
       assert.equal(delegatedVoters.length, 0, 'delegate2 should not be a delegate of anyone')
 
-      await voting.setDelegate(delegate1, {from: holder29})
-      await voting.setDelegate(delegate2, {from: holder51})
+      await voting.assignDelegate(delegate1, {from: holder29})
+      await voting.assignDelegate(delegate2, {from: holder51})
 
-      await voting.setDelegate(delegate2, {from: holder29})
+      await voting.assignDelegate(delegate2, {from: holder29})
 
       const delegatedVotersDelegate1 = (await voting.getDelegatedVoters(delegate1, 0, 1))[0]
       assertArraysEqualAsSets(delegatedVotersDelegate1, [], 'delegate1 should not be a delegate of anyone')
@@ -244,17 +244,17 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       let delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, 1))[0]
       assert.equal(delegatedVoters.length, 0, 'delegate1 should not be a delegate of anyone')
 
-      const tx1 = await voting.setDelegate(delegate1, {from: holder29})
-      assertEvent(tx1, 'SetDelegate', {
+      const tx1 = await voting.assignDelegate(delegate1, {from: holder29})
+      assertEvent(tx1, 'AssignDelegate', {
         expectedArgs: {voter: holder29, delegate: delegate1}
       })
-      assertAmountOfEvents(tx1, 'SetDelegate', {expectedAmount: 1})
+      assertAmountOfEvents(tx1, 'AssignDelegate', {expectedAmount: 1})
 
-      const tx2 = await voting.setDelegate(delegate1, {from: holder51})
-      assertEvent(tx2, 'SetDelegate', {
+      const tx2 = await voting.assignDelegate(delegate1, {from: holder51})
+      assertEvent(tx2, 'AssignDelegate', {
         expectedArgs: {voter: holder51, delegate: delegate1}
       })
-      assertAmountOfEvents(tx2, 'SetDelegate', {expectedAmount: 1})
+      assertAmountOfEvents(tx2, 'AssignDelegate', {expectedAmount: 1})
 
       delegatedVoters = (await voting.getDelegatedVoters(delegate1, 0, 2))[0]
       assertArraysEqualAsSets(delegatedVoters, [holder29, holder51], 'delegate1 should be a delegate of holder29 and holder51')
@@ -268,7 +268,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       const delegateList= [ [delegate1, holder1], [delegate1, holder20] ]
 
       for (const [delegate, holder] of delegateList) {
-        await setDelegate(delegate, holder)
+        await assignDelegate(delegate, holder)
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
@@ -292,7 +292,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
     it('delegate can manage several voters and vote all (voteForMulti)', async () => {
       const delegateList= [ [delegate2, holder29], [delegate2, holder51] ]
       for (const [delegate, holder] of delegateList) {
-        await setDelegate(delegate, holder)
+        await assignDelegate(delegate, holder)
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
@@ -314,7 +314,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       const delegateList= [ [delegate1, holder1], [delegate1, holder20] ]
 
       for (const [delegate, holder] of delegateList) {
-        await setDelegate(delegate, holder)
+        await assignDelegate(delegate, holder)
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
@@ -338,7 +338,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
     it('delegate can manage several voters and vote for first (voteForMulti)', async () => {
       const delegateList= [ [delegate2, holder29], [delegate2, holder51] ]
       for (const [delegate, holder] of delegateList) {
-        setDelegate(delegate, holder)
+        assignDelegate(delegate, holder)
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
@@ -362,7 +362,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
     it('delegated voter can overwrite a delegates vote (voteFor)', async () => {
       const [ delegate, holder] = [ delegate1, holder1 ]
 
-      setDelegate(delegate, holder)
+      assignDelegate(delegate, holder)
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
 
@@ -387,7 +387,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
     it('delegated voter can overwrite a delegates vote (voteForMulti)', async () => {
       const [ delegate, holder] = [ delegate2, holder29 ]
 
-      await setDelegate(delegate, holder)
+      await assignDelegate(delegate, holder)
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
 
@@ -412,13 +412,13 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
     it('delegate can vote for a voter that delegated them their voting power during the active phase (voteFor)', async () => {
       const [ delegate, holder] = [ delegate2, holder1 ]
 
-      await setDelegate(delegate, holder)
+      await assignDelegate(delegate, holder)
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
       const { phase } = await voting.getVote(voteId)
       assert.equal(phase, MAIN_PHASE)
 
-      await setDelegate(delegate1, holder)
+      await assignDelegate(delegate1, holder)
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate1, 0, 3, voteId)
       assertArraysEqualAsSets(delegatedVotersData[0], [ holder1 ])
 
@@ -435,13 +435,13 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
     it('delegate can vote for a voter that delegated them their voting power during the active phase (voteForMulti)', async () => {
       const [ delegate, holder] = [ delegate1, holder29 ]
 
-      await setDelegate(delegate, holder)
+      await assignDelegate(delegate, holder)
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
       const { phase } = await voting.getVote(voteId)
       assert.equal(phase, MAIN_PHASE)
 
-      await setDelegate(delegate2, holder)
+      await assignDelegate(delegate2, holder)
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
       assertArraysEqualAsSets(delegatedVotersData[0], [holder29])
 
@@ -457,13 +457,13 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
     it('delegate cant vote for a voter that acquired voting power during the active phase of the vote (voteFor)', async () => {
       const [ delegate, holder] = [ delegate1, holder1 ]
 
-      await setDelegate(delegate, holder)
+      await assignDelegate(delegate, holder)
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
       const { phase } = await voting.getVote(voteId)
       assert.equal(phase, MAIN_PHASE)
 
-      await setDelegate(delegate2,  holder)
+      await assignDelegate(delegate2,  holder)
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate1, 0, 3, voteId)
       assertArraysEqualAsSets(delegatedVotersData[0], [ ])
 
@@ -474,13 +474,13 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
     it('delegate cant vote for a voter that acquired voting power during the active phase of the vote (voteForMulti)', async () => {
       const [ delegate, holder] = [ delegate2, holder29 ]
 
-      await setDelegate(delegate, holder)
+      await assignDelegate(delegate, holder)
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
       const { phase } = await voting.getVote(voteId)
       assert.equal(phase, MAIN_PHASE)
 
-      await setDelegate(delegate1, holder)
+      await assignDelegate(delegate1, holder)
       const delegatedVotersData = await voting.getDelegatedVotersAtVote(delegate2, 0, 3, voteId)
       assertArraysEqualAsSets(delegatedVotersData[0], [])
 
@@ -494,7 +494,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       const delegateList= [ [delegate1, holder1], [delegate1, holder20] ]
 
       for (const [delegate, holder] of delegateList) {
-        await setDelegate(delegate, holder)
+        await assignDelegate(delegate, holder)
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
@@ -519,7 +519,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
     it('delegate vote by snapshot vp not current (voteForMulti)', async () => {
       const delegateList= [ [delegate2, holder29], [delegate2, holder51] ]
       for (const [delegate, holder] of delegateList) {
-        await setDelegate(delegate, holder)
+        await assignDelegate(delegate, holder)
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
@@ -543,7 +543,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       const delegateList = [[delegate1, holder1], [delegate1, holder20]]
 
       for (const [delegate, holder] of delegateList) {
-        await setDelegate(delegate, holder)
+        await assignDelegate(delegate, holder)
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
@@ -571,7 +571,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
     it('delegate change mind (voteForMulti)', async () => {
       const delegateList= [ [delegate2, holder29], [delegate2, holder51] ]
       for (const [delegate, holder] of delegateList) {
-        await setDelegate(delegate, holder)
+        await assignDelegate(delegate, holder)
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
@@ -596,7 +596,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       const delegateList = [[delegate1, holder1], [delegate1, holder20]]
 
       for (const [delegate, holder] of delegateList) {
-        await setDelegate(delegate, holder)
+        await assignDelegate(delegate, holder)
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
@@ -628,7 +628,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
     it('delegate vote "yes" in main phase, delegate vote "no" in objection (voteForMulti)', async () => {
       const delegateList= [ [delegate2, holder29], [delegate2, holder51] ]
       for (const [delegate, holder] of delegateList) {
-        await setDelegate(delegate, holder)
+        await assignDelegate(delegate, holder)
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
@@ -658,7 +658,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       const delegateList = [[delegate1, holder1], [delegate1, holder20]]
 
       for (const [delegate, holder] of delegateList) {
-        await setDelegate(delegate, holder)
+        await assignDelegate(delegate, holder)
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
@@ -679,7 +679,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       const objectorList = [[delegate2, holder1], [delegate2, holder20]]
 
       for (const [delegate, holder] of objectorList) {
-        await setDelegate(delegate, holder)
+        await assignDelegate(delegate, holder)
       }
 
       for (const [ delegate , holder] of objectorList) {
@@ -696,7 +696,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
     it('delegate vote "yes" in main phase, new delegate vote "no" in objection (voteForMulti)', async () => {
       const delegateList= [[delegate2, holder29], [delegate2, holder51]]
       for (const [delegate, holder] of delegateList) {
-        await setDelegate(delegate, holder)
+        await assignDelegate(delegate, holder)
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
@@ -715,7 +715,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       const objectorList = [[delegate1, holder29], [delegate1, holder51]]
 
       for (const [delegate, holder] of objectorList) {
-        await setDelegate(delegate, holder)
+        await assignDelegate(delegate, holder)
       }
 
       await attemptVoteForMultiple(voteId, false, delegatedVotersData[0], delegate1)
@@ -732,7 +732,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       const delegateList = [[delegate1, holder1], [delegate1, holder20]]
 
       for (const [delegate, holder] of delegateList) {
-        await setDelegate(delegate, holder)
+        await assignDelegate(delegate, holder)
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
@@ -764,7 +764,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
     it('delegate vote in main phase, voter overpower in objection (voteForMulti)', async () => {
       const delegateList= [ [delegate2, holder29], [delegate2, holder51] ]
       for (const [delegate, holder] of delegateList) {
-        await setDelegate(delegate, holder)
+        await assignDelegate(delegate, holder)
       }
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
@@ -792,12 +792,12 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
     // If a delegate was spammed by a large amount of fake delegated voters, they can still easily
     // retrieve an actual voters list and vote for that list.
     it('delegate can vote after spam', async () => {
-      await setDelegate(delegate2, holder29)
+      await assignDelegate(delegate2, holder29)
       for (const holder of spamHolders) {
         await token.generateTokens(holder, LDO3)
-        await setDelegate(delegate2, holder)
+        await assignDelegate(delegate2, holder)
       }
-      await setDelegate(delegate2, holder51)
+      await assignDelegate(delegate2, holder51)
 
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
 
@@ -844,7 +844,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
 
       for (let i = 0; i < voters.length; i++) {
         await token.generateTokens(voters[i].account, voters[i].balance)
-        await voting.setDelegate(delegate1, {from: voters[i].account})
+        await voting.assignDelegate(delegate1, {from: voters[i].account})
       }
 
       executionTarget = await ExecutionTarget.new()
@@ -964,7 +964,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
 
       for (let i = 0; i < voters.length; i++) {
         await token.generateTokens(voters[i].account, voters[i].balance)
-        await voting.setDelegate(delegate1, {from: voters[i].account})
+        await voting.assignDelegate(delegate1, {from: voters[i].account})
       }
 
       executionTarget = await ExecutionTarget.new()
@@ -972,7 +972,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       const action = {to: executionTarget.address, calldata: executionTarget.contract.methods.execute().encodeABI()}
       script = encodeCallScript([action, action])
 
-      await voting.resetDelegate({from: holder1})
+      await voting.unassignDelegate({from: holder1})
       await token.transfer(holder51, bigExp(2, decimals), { from: holder2 })
 
       const receipt = await voting.methods['newVote(bytes,string)'](script, 'metadata', {from: holder51});
