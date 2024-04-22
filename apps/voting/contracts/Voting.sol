@@ -226,8 +226,10 @@ contract Voting is IForwarder, AragonApp {
     function vote(uint256 _voteId, bool _supports, bool /* _executesIfDecided_deprecated */) external voteExists(_voteId) {
         Vote storage vote_ = votes[_voteId];
         require(_isValidPhaseToVote(vote_, _supports), ERROR_CAN_NOT_VOTE);
-        require(_hasVotingPower(vote_, msg.sender), ERROR_NO_VOTING_POWER);
-        _vote(_voteId, _supports, msg.sender, false);
+        // This could re-enter, though we can assume the governance token is not malicious
+        uint256 votingPower = token.balanceOfAt(msg.sender, vote_.snapshotBlock);
+        require(votingPower > 0, ERROR_NO_VOTING_POWER);
+        _vote(_voteId, _supports, msg.sender, false, votingPower);
     }
 
     /**
@@ -279,11 +281,14 @@ contract Voting is IForwarder, AragonApp {
         bool votedForAtLeastOne = false;
 
         address voter;
+        uint256 votingPower;
         for (uint256 i = 0; i < _voters.length; ++i) {
             voter = _voters[i];
-            require(_hasVotingPower(vote_, voter), ERROR_NO_VOTING_POWER);
+            // This could re-enter, though we can assume the governance token is not malicious
+            votingPower = token.balanceOfAt(voter, vote_.snapshotBlock);
+            require(votingPower > 0, ERROR_NO_VOTING_POWER);
             if (_canVoteFor(vote_, voter, msg.sender)) {
-                _vote(_voteId, _supports, voter, true);
+                _vote(_voteId, _supports, voter, true, votingPower);
                 votedForAtLeastOne = true;
             }
         }
@@ -358,7 +363,8 @@ contract Voting is IForwarder, AragonApp {
     */
     function canVote(uint256 _voteId, address _voter) external view voteExists(_voteId) returns (bool) {
         Vote storage vote_ = votes[_voteId];
-        return _isVoteOpen(vote_) && _hasVotingPower(vote_, _voter);
+        uint256 votingPower = token.balanceOfAt(_voter, vote_.snapshotBlock);
+        return _isVoteOpen(vote_) && votingPower > 0;
     }
 
     /**
@@ -544,36 +550,33 @@ contract Voting is IForwarder, AragonApp {
      * @param _voter The address of the voter
      * @param _isDelegate Whether the voter is a delegate
      */
-    function _vote(uint256 _voteId, bool _supports, address _voter, bool _isDelegate) internal {
+    function _vote(uint256 _voteId, bool _supports, address _voter, bool _isDelegate, uint256 _votingPower) internal {
         Vote storage vote_ = votes[_voteId];
-
-        // This could re-enter, though we can assume the governance token is not malicious
-        uint256 voterStake = token.balanceOfAt(_voter, vote_.snapshotBlock);
         VoterState state = vote_.voters[_voter];
 
         // If voter had previously voted, decrease count
         if (state == VoterState.Yea || state == VoterState.DelegateYea) {
-            vote_.yea = vote_.yea.sub(voterStake);
+            vote_.yea = vote_.yea.sub(_votingPower);
         } else if (state == VoterState.Nay || state == VoterState.DelegateNay) {
-            vote_.nay = vote_.nay.sub(voterStake);
+            vote_.nay = vote_.nay.sub(_votingPower);
         }
 
         if (_supports) {
-            vote_.yea = vote_.yea.add(voterStake);
+            vote_.yea = vote_.yea.add(_votingPower);
             vote_.voters[_voter] = _isDelegate ? VoterState.DelegateYea : VoterState.Yea;
         } else {
-            vote_.nay = vote_.nay.add(voterStake);
+            vote_.nay = vote_.nay.add(_votingPower);
             vote_.voters[_voter] = _isDelegate ? VoterState.DelegateNay : VoterState.Nay;
         }
 
-        emit CastVote(_voteId, _voter, _supports, voterStake);
+        emit CastVote(_voteId, _voter, _supports, _votingPower);
 
         if (_getVotePhase(vote_) == VotePhase.Objection) {
-            emit CastObjection(_voteId, _voter, voterStake);
+            emit CastObjection(_voteId, _voter, _votingPower);
         }
 
         if (_isDelegate) {
-            emit CastVoteAsDelegate(_voteId, msg.sender, _voter, _supports, voterStake);
+            emit CastVoteAsDelegate(_voteId, msg.sender, _voter, _supports, _votingPower);
         }
     }
 
@@ -711,16 +714,6 @@ contract Voting is IForwarder, AragonApp {
         // Otherwise, the _voter must not have voted directly
         VoterState state = vote_.voters[_voter];
         return state != VoterState.Yea && state != VoterState.Nay;
-    }
-
-    /**
-    * @dev Internal function to get the voter's token balance at the vote's snapshot block
-    * @param vote_ The queried vote
-    * @param _voter address of the voter
-    * @return The voter's token balance at the vote's snapshot block
-    */
-    function _hasVotingPower(Vote storage vote_, address _voter) internal view returns (bool) {
-        return token.balanceOfAt(_voter, vote_.snapshotBlock) > 0;
     }
 
     /**
