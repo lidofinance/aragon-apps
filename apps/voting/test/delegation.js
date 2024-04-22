@@ -47,7 +47,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
     aclP = acl
   })
 
-  context('voting delegate', () => {
+  context('simple delegation scenarios', () => {
     const neededSupport = pct16(50)
     const minimumAcceptanceQuorum = pct16(20)
     const decimals = 18
@@ -1140,6 +1140,60 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       const vote = await voting.getVote(voteId)
       assertBn(vote.yea, bigExp(0, decimals), 'yea should be 0')
       assertBn(vote.nay, holder29VP, 'nay should be holder29 VP')
+    })
+
+  })
+
+  context.skip('Gas estimation tests (should be skipped)', () => {
+    let script, voteId, creator, metadata
+
+    const neededSupport = pct16(50)
+    const minimumAcceptanceQuorum = pct16(20)
+    const decimals = 18
+
+    beforeEach(async () => {
+      token = await MiniMeToken.new(ZERO_ADDRESS, ZERO_ADDRESS, 0, 'n', decimals, 'n', true) // empty parameters minime
+
+      await voting.initialize(token.address, neededSupport, minimumAcceptanceQuorum, votingDuration, objectionPhase)
+      await token.generateTokens(holder51, bigExp(51, decimals))
+
+      for (const holder of spamHolders) {
+        await token.generateTokens(holder, bigExp(1, decimals))
+        await voting.assignDelegate(delegate1, {from: holder})
+      }
+
+      executionTarget = await ExecutionTarget.new()
+
+      const action = {to: executionTarget.address, calldata: executionTarget.contract.methods.execute().encodeABI()}
+      script = encodeCallScript([action, action])
+
+      const receipt = await voting.methods['newVote(bytes,string)'](script, 'metadata', {from: holder51})
+      voteId = getEventArgument(receipt, 'StartVote', 'voteId')
+      creator = getEventArgument(receipt, 'StartVote', 'creator')
+      metadata = getEventArgument(receipt, 'StartVote', 'metadata')
+    })
+
+    it(`voting for 1`, async () => {
+      let voter = spamHolders[0]
+      let tx = await voting.attemptVoteFor(voteId, false, voter, {from: delegate1})
+      console.log('Gas used for voting for 1:', tx.receipt.gasUsed)
+
+      voter = spamHolders[1]
+      tx = await voting.vote(voteId, true, false, {from: voter})
+      console.log('Gas used for a single .vote()', tx.receipt.gasUsed)
+
+    })
+
+    it(`voting for 10`, async () => {
+      const voters = spamHolders.slice(0, 10)
+      const tx = await voting.attemptVoteForMultiple(voteId, false, voters, {from: delegate1})
+      console.log('Gas used for voting for 10:', tx.receipt.gasUsed)
+    })
+
+    it(`voting for 100`, async () => {
+      const voters = spamHolders.slice(0, 100)
+      const tx = await voting.attemptVoteForMultiple(voteId, false, voters, {from: delegate1})
+      console.log('Gas used for voting for 100:', tx.receipt.gasUsed)
     })
 
   })
