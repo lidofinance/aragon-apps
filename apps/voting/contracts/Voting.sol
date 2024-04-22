@@ -282,7 +282,7 @@ contract Voting is IForwarder, AragonApp {
         for (uint256 i = 0; i < _voters.length; ++i) {
             voter = _voters[i];
             require(_hasVotingPower(vote_, voter), ERROR_NO_VOTING_POWER);
-            if (_canVoteFor(vote_, msg.sender, voter)) {
+            if (_canVoteFor(vote_, voter, msg.sender)) {
                 _vote(_voteId, _supports, voter, true);
                 votedForAtLeastOne = true;
             }
@@ -687,38 +687,24 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @dev Internal function to check if the _delegate is a current delegate for the _voter
-    * @param _delegate address of the delegate
-    * @param _voter address of the voter
-    * @return True if _delegate is a current delegate for the _voter, false otherwise
-    */
-    function _isDelegateFor(address _delegate, address _voter) internal view returns (bool) {
-        if (_delegate == address(0) || _voter == address(0)) {
-            return false;
-        }
-        return delegates[_voter].delegate == _delegate;
-    }
-
-    /**
     * @dev Internal function to check if the _delegate can vote on behalf of the _voter in the given vote
     * @param vote_ The queried vote
     * @param _delegate address of the delegate
     * @param _voter address of the voter
     * @return True if the _delegate can vote on behalf of the _voter in the given vote, false otherwise
     */
-    function _canVoteFor(Vote storage vote_, address _delegate, address _voter) internal view returns (bool) {
-        return _isDelegateFor(_delegate, _voter) && !_hasVotedDirectly(vote_, _voter);
-    }
-
-    /**
-    * @dev Internal function to check if the _voter has voted by themselves in the given vote
-    * @param vote_ The queried vote
-    * @param _voter address of the voter
-    * @return True if the _voter has voted by themselves in the given vote, false otherwise
-    */
-    function _hasVotedDirectly(Vote storage vote_, address _voter) internal view returns (bool) {
+    function _canVoteFor(Vote storage vote_, address _voter, address _delegate) internal view returns (bool) {
+        // Zero addresses are not allowed
+        if (_delegate == address(0) || _voter == address(0)) {
+            return false;
+        }
+        // The _delegate must be a delegate for the _voter
+        if (delegates[_voter].delegate != _delegate) {
+            return false;
+        }
+        // Otherwise, the _voter must not have voted directly
         VoterState state = vote_.voters[_voter];
-        return state == VoterState.Yea || state == VoterState.Nay;
+        return state != VoterState.Yea && state != VoterState.Nay;
     }
 
     /**
