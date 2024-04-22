@@ -431,28 +431,29 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-     * @notice Return the sliced list of delegated voters for `_delegate` and their voting power at the current block
+     * @notice Return the sliced list of delegated voters for `_delegate`
      * @param _delegate the address of the delegate
      * @param _offset the number of delegated voters from the start of the list to skip
      * @param _limit the number of delegated voters to return
      * @return the array of delegated voters
-     * @return the array of voting power of delegated voters
      */
-    function getDelegatedVoters(address _delegate, uint256 _offset, uint256 _limit) external view returns (address[] memory, uint256[] memory) {
-        return _getDelegatedVotersAt(_delegate, _offset, _limit, getBlockNumber64());
-    }
+    function getDelegatedVoters(address _delegate, uint256 _offset, uint256 _limit) external view returns (address[] memory voters) {
+        require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
+        require(_limit > 0, ERROR_INVALID_LIMIT);
+        uint256 delegatedVotersCount = delegatedVoters[_delegate].addresses.length;
+        if (delegatedVotersCount == 0) {
+            return voters;
+        }
+        require(_offset < delegatedVotersCount, ERROR_INVALID_OFFSET);
 
-    /**
-     * @notice Return the sliced list of delegated voters for `_delegate` and their voting power at the `_voteId` snapshot block
-     * @param _delegate the address of the delegate
-     * @param _offset the number of delegated voters from the start of the list to skip
-     * @param _limit the number of delegated voters to return
-     * @return the array of delegated voters
-     * @return the array of voting power of delegated voters
-     */
-    function getDelegatedVotersAtVote(address _delegate, uint256 _offset, uint256 _limit, uint256 _voteId) external view voteExists(_voteId) returns (address[] memory, uint256[] memory) {
-        Vote storage vote_ = votes[_voteId];
-        return _getDelegatedVotersAt(_delegate, _offset, _limit, vote_.snapshotBlock);
+        uint256 returnCount = _offset.add(_limit) > delegatedVotersCount ? delegatedVotersCount.sub(_offset) : _limit;
+        voters = new address[](returnCount);
+        address voter;
+        for (uint256 i = 0; i < returnCount; ++i) {
+            voter = delegatedVoters[_delegate].addresses[_offset + i];
+            voters[i] = voter;
+        }
+        return voters;
     }
 
     /**
@@ -476,16 +477,37 @@ contract Voting is IForwarder, AragonApp {
 
     /**
      * @notice Return the list of `VoterState` for the `_voters` for the vote #`_voteId`
-     * @param _voters the list of voters
      * @param _voteId Vote identifier
+     * @param _voters list of voters
+     * @return the array of voter states
      */
-    function getVotersStateAtVote(uint256 _voteId, address[] _voters) external view voteExists(_voteId) returns (VoterState[] memory voterStatesList) {
+    function getVoterStateMultiple(uint256 _voteId, address[] _voters) external view voteExists(_voteId) returns (VoterState[] memory voterStatesList) {
         uint256 votersCount = _voters.length;
         voterStatesList = new VoterState[](votersCount);
         Vote storage vote_ = votes[_voteId];
         for (uint256 i = 0; i < votersCount; ++i) {
             voterStatesList[i] = vote_.voters[_voters[i]];
         }
+    }
+
+    /**
+     * @notice Return the voting power of the `_voters` at the current block
+     * @param _voters list of voters
+     * @return the array of governance token balances
+     */
+    function getVotingPowerMultiple(address[] _voters) external view returns (uint256[] memory balances) {
+        return _getVotingPowerMultipleAt(_voters, getBlockNumber64());
+    }
+
+    /**
+     * @notice Return the voting power of the `_voters` at the vote #`_voteId` snapshot block
+     * @param _voteId Vote identifier
+     * @param _voters list of voters
+     * @return the array of governance token balances
+     */
+    function getVotingPowerMultipleAtVote(uint256 _voteId, address[] _voters) external view voteExists(_voteId) returns (uint256[] memory balances) {
+        Vote storage vote_ = votes[_voteId];
+        return _getVotingPowerMultipleAt(_voters, vote_.snapshotBlock);
     }
 
     // Internal fns
@@ -615,33 +637,17 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-     * @notice Return the sliced list of delegated voters for `_delegate` and their voting power at the `_blockNumber`
-     * @param _delegate the address of the delegate
-     * @param _offset the number of delegated voters from the start of the list to skip
-     * @param _limit the number of delegated voters to return
-     * @param _blockNumber the block number to get the voting power
-     * @return the array of delegated voters
-     * @return the array of voting power of delegated voters
+     * @dev internal function to get the voting power of the `_voters` at the `_blockNumber`
+     * @param _voters list of voters
+     * @param _blockNumber target block number
      */
-    function _getDelegatedVotersAt(address _delegate, uint256 _offset, uint256 _limit, uint256 _blockNumber) internal view returns (address[] memory votersList, uint256[] memory votingPowerList) {
-        require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
-        require(_limit > 0, ERROR_INVALID_LIMIT);
-        uint256 delegatedVotersCount = delegatedVoters[_delegate].addresses.length;
-        if (delegatedVotersCount == 0) {
-            return (votersList, votingPowerList);
+    function _getVotingPowerMultipleAt(address[] _voters, uint256 _blockNumber) internal view returns (uint256[] memory balances) {
+        uint256 votersCount = _voters.length;
+        balances = new uint256[](votersCount);
+        for (uint256 i = 0; i < votersCount; ++i) {
+            balances[i] = token.balanceOfAt(_voters[i], _blockNumber);
         }
-        require(_offset < delegatedVotersCount, ERROR_INVALID_OFFSET);
-
-        uint256 returnCount = _offset.add(_limit) > delegatedVotersCount ? delegatedVotersCount.sub(_offset) : _limit;
-        votersList = new address[](returnCount);
-        votingPowerList = new uint256[](returnCount);
-        address voter;
-        for (uint256 i = 0; i < returnCount; ++i) {
-            voter = delegatedVoters[_delegate].addresses[_offset + i];
-            votersList[i] = voter;
-            votingPowerList[i] = token.balanceOfAt(voter, _blockNumber);
-        }
-        return (votersList, votingPowerList);
+        return balances;
     }
 
     /**
