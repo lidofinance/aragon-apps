@@ -1173,15 +1173,16 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       metadata = getEventArgument(receipt, 'StartVote', 'metadata')
     })
 
+    it(`voting without delegation`, async () => {
+      const voter = spamHolders[0]
+      const tx = await voting.vote(voteId, true, false, {from: voter})
+      console.log('Gas used for a voting without delegation:', tx.receipt.gasUsed)
+    })
+
     it(`voting for 1`, async () => {
-      let voter = spamHolders[0]
-      let tx = await voting.attemptVoteFor(voteId, false, voter, {from: delegate1})
+      const voter = spamHolders[0]
+      const tx = await voting.attemptVoteFor(voteId, false, voter, {from: delegate1})
       console.log('Gas used for voting for 1:', tx.receipt.gasUsed)
-
-      voter = spamHolders[1]
-      tx = await voting.vote(voteId, true, false, {from: voter})
-      console.log('Gas used for a single .vote()', tx.receipt.gasUsed)
-
     })
 
     it(`voting for 10`, async () => {
