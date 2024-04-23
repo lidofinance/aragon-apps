@@ -98,7 +98,7 @@ contract Voting is IForwarder, AragonApp {
     event ChangeObjectionPhaseTime(uint64 objectionPhaseTime);
     event AssignDelegate(address indexed voter, address indexed delegate);
     event UnassignDelegate(address indexed voter, address indexed unassignedDelegate);
-    event CastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, bool supports, address[] voters, bool[] votedFor);
+    event CastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, address[] voters, VoterState[] votedStateList);
 
     modifier voteExists(uint256 _voteId) {
         require(_voteId < votesLength, ERROR_NO_VOTE);
@@ -229,7 +229,8 @@ contract Voting is IForwarder, AragonApp {
         // This could re-enter, though we can assume the governance token is not malicious
         uint256 votingPower = token.balanceOfAt(msg.sender, vote_.snapshotBlock);
         require(votingPower > 0, ERROR_NO_VOTING_POWER);
-        _vote(_voteId, _supports, msg.sender, false, votingPower);
+        VoterState voterState = _supports ? VoterState.Yea : VoterState.Nay;
+        _vote(_voteId, msg.sender, voterState, votingPower);
     }
 
     /**
@@ -282,21 +283,22 @@ contract Voting is IForwarder, AragonApp {
         bool votedForAtLeastOne = false;
         address voter;
         uint256 votingPower;
-        bool[] memory votedFor = new bool[](_voters.length);
+        VoterState voterState = _supports ? VoterState.DelegateYea : VoterState.DelegateNay;
+        VoterState[] memory voterStateList = new VoterState[](_voters.length);
         for (uint256 i = 0; i < _voters.length; ++i) {
             voter = _voters[i];
             // This could re-enter, though we can assume the governance token is not malicious
             votingPower = token.balanceOfAt(voter, vote_.snapshotBlock);
             require(votingPower > 0, ERROR_NO_VOTING_POWER);
             if (_canVoteFor(vote_, voter, msg.sender)) {
-                _vote(_voteId, _supports, voter, true, votingPower);
-                votedFor[i] = true;
+                _vote(_voteId, voter, voterState, votingPower);
+                voterStateList[i] = voterState;
                 votedForAtLeastOne = true;
             }
         }
         require(votedForAtLeastOne, ERROR_CAN_NOT_VOTE_FOR);
 
-        emit CastVoteAsDelegate(_voteId, msg.sender, _supports, _voters, votedFor);
+        emit CastVoteAsDelegate(_voteId, msg.sender, _voters, voterStateList);
     }
 
     /**
@@ -549,30 +551,33 @@ contract Voting is IForwarder, AragonApp {
      * @dev Internal function to cast a vote or object to.
      * @dev It assumes that voter can support or object to the vote
      * @param _voteId The identifier of the vote
-     * @param _supports Whether the voter supports the vote
      * @param _voter The address of the voter
-     * @param _isDelegate Whether the voter is a delegate
+     * @param _voterState The state that voter will apply to vote
+     * @param _votingPower The amount of voting power that voter will apply to vote
      */
-    function _vote(uint256 _voteId, bool _supports, address _voter, bool _isDelegate, uint256 _votingPower) internal {
+    function _vote(uint256 _voteId, address _voter, VoterState _voterState, uint256 _votingPower) internal {
+        assert(_voterState != VoterState.Absent); // TODO: do we need this check?
+
         Vote storage vote_ = votes[_voteId];
-        VoterState state = vote_.voters[_voter];
+        VoterState previousState = vote_.voters[_voter];
 
         // If voter had previously voted, decrease count
-        if (state == VoterState.Yea || state == VoterState.DelegateYea) {
+        if (previousState == VoterState.Yea || previousState == VoterState.DelegateYea) {
             vote_.yea = vote_.yea.sub(_votingPower);
-        } else if (state == VoterState.Nay || state == VoterState.DelegateNay) {
+        } else if (previousState == VoterState.Nay || previousState == VoterState.DelegateNay) {
             vote_.nay = vote_.nay.sub(_votingPower);
         }
 
-        if (_supports) {
+        bool supports = false;
+        if (_voterState == VoterState.Yea || _voterState == VoterState.DelegateYea) {
             vote_.yea = vote_.yea.add(_votingPower);
-            vote_.voters[_voter] = _isDelegate ? VoterState.DelegateYea : VoterState.Yea;
+            supports = true;
         } else {
             vote_.nay = vote_.nay.add(_votingPower);
-            vote_.voters[_voter] = _isDelegate ? VoterState.DelegateNay : VoterState.Nay;
         }
+        vote_.voters[_voter] = _voterState;
 
-        emit CastVote(_voteId, _voter, _supports, _votingPower);
+        emit CastVote(_voteId, _voter, supports, _votingPower);
 
         if (_getVotePhase(vote_) == VotePhase.Objection) {
             emit CastObjection(_voteId, _voter, _votingPower);

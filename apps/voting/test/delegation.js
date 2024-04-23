@@ -79,7 +79,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       assertEvent(tx, 'CastVote', {
         expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
       })
-      assertEvent(tx, 'CastVoteAsDelegate', { expectedArgs: {voteId, delegate, supports} })
+      assertEvent(tx, 'CastVoteAsDelegate', { expectedArgs: {voteId, delegate} })
       const votersFromEvent = getEventArgument(tx, 'CastVoteAsDelegate', 'voters')
       assertArraysEqualAsSets([holder], votersFromEvent)
       assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
@@ -1040,7 +1040,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
       assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
       assertEvent(tx, 'CastVote', {expectedArgs: {voteId, voter: holder20, supports: true}})
-      assertEvent(tx, 'CastVoteAsDelegate', {expectedArgs: {voteId, delegate: delegate1, supports: true}})
+      assertEvent(tx, 'CastVoteAsDelegate', {expectedArgs: {voteId, delegate: delegate1 }})
       const votersFromEvent = getEventArgument(tx, 'CastVoteAsDelegate', 'voters')
       assertArraysEqualAsSets([holder20, holder29], votersFromEvent)
 
@@ -1101,7 +1101,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
         const {address, votingPower} = filteredDelegatedVoters[i]
         assertEvent(tx, 'CastVote', {index: i, expectedArgs: {voteId, voter: address, supports: false, stake: votingPower}})
       }
-      assertEvent(tx, 'CastVoteAsDelegate', {expectedArgs: {voteId, delegate: delegate1, supports: false}})
+      assertEvent(tx, 'CastVoteAsDelegate', {expectedArgs: {voteId, delegate: delegate1}})
       const votersFromEvent = getEventArgument(tx, 'CastVoteAsDelegate', 'voters')
       assertArraysEqualAsSets(filteredDelegatedVoters, votersFromEvent)
 
@@ -1133,7 +1133,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
 
       // Check events content
       assertEvent(tx, 'CastVote', { expectedArgs: {voteId, voter: holder29, supports: false, stake: holder29VP}})
-      assertEvent(tx, 'CastVoteAsDelegate', { expectedArgs: {voteId, delegate: delegate1, supports: false}})
+      assertEvent(tx, 'CastVoteAsDelegate', { expectedArgs: {voteId, delegate: delegate1}})
       const votersFromEvent = getEventArgument(tx, 'CastVoteAsDelegate', 'voters')
       assertArraysEqualAsSets([holder29], votersFromEvent)
 
