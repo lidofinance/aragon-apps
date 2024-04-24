@@ -77,13 +77,13 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
     const attemptVoteFor = async (voteId, supports, holder, delegate) => {
       const tx = await voting.attemptVoteFor(voteId, supports, holder, {from: delegate})
       assertEvent(tx, 'CastVote', {
-        expectedArgs: {voteId: voteId, voter: holder, supports: supports, stake: initBalance[holder]}
+        expectedArgs: {voteId: voteId, voter: holder, supports, stake: initBalance[holder]}
       })
-      assertEvent(tx, 'CastVoteAsDelegate', { expectedArgs: {voteId, delegate, supports} })
-      const votersFromEvent = getEventArgument(tx, 'CastVoteAsDelegate', 'voters')
+      assertEvent(tx, 'AttemptCastVoteAsDelegate', { expectedArgs: {voteId, delegate} })
+      const votersFromEvent = getEventArgument(tx, 'AttemptCastVoteAsDelegate', 'voters')
       assertArraysEqualAsSets([holder], votersFromEvent)
       assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
-      assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
+      assertAmountOfEvents(tx, 'AttemptCastVoteAsDelegate', {expectedAmount: 1})
     }
     const attemptVoteForMultiple = async (voteId, supports, holders, delegate) => {
       const tx = await voting.attemptVoteForMultiple(voteId, supports, holders, {from: delegate})
@@ -102,11 +102,11 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
           expectedArgs: {voteId, voter: holder, supports, stake}
         })
       }
-      assertEvent(tx, 'CastVoteAsDelegate', { expectedArgs: {voteId, delegate} })
-      const votersFromEvent = getEventArgument(tx, 'CastVoteAsDelegate', 'voters')
+      assertEvent(tx, 'AttemptCastVoteAsDelegate', { expectedArgs: {voteId, delegate} })
+      const votersFromEvent = getEventArgument(tx, 'AttemptCastVoteAsDelegate', 'voters')
       assertArraysEqualAsSets(holders, votersFromEvent)
       assertAmountOfEvents(tx, 'CastVote', {expectedAmount: holders.length})
-      assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
+      assertAmountOfEvents(tx, 'AttemptCastVoteAsDelegate', {expectedAmount: 1})
     }
     const vote = async (voteId, supports, exec, holder) => {
       const tx = await voting.vote(voteId, supports, exec, {from: holder})
@@ -1038,10 +1038,10 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       const tx = await voting.attemptVoteForMultiple(voteId, true, [holder20, holder29], {from: delegate1});
 
       assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
-      assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
+      assertAmountOfEvents(tx, 'AttemptCastVoteAsDelegate', {expectedAmount: 1})
       assertEvent(tx, 'CastVote', {expectedArgs: {voteId, voter: holder20, supports: true}})
-      assertEvent(tx, 'CastVoteAsDelegate', {expectedArgs: {voteId, delegate: delegate1, supports: true}})
-      const votersFromEvent = getEventArgument(tx, 'CastVoteAsDelegate', 'voters')
+      assertEvent(tx, 'AttemptCastVoteAsDelegate', {expectedArgs: {voteId, delegate: delegate1}})
+      const votersFromEvent = getEventArgument(tx, 'AttemptCastVoteAsDelegate', 'voters')
       assertArraysEqualAsSets([holder20, holder29], votersFromEvent)
 
       assert.equal(await voting.getVoterState(voteId, holder29), VOTER_STATE.NAY, `holder29 should have 'nay' state`)
@@ -1052,7 +1052,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       const tx = await voting.attemptVoteForMultiple(voteId, false, [holder29, holder29], {from: delegate1});
 
       assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 2})
-      assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
+      assertAmountOfEvents(tx, 'AttemptCastVoteAsDelegate', {expectedAmount: 1})
       assert.equal(await voting.getVoterState(voteId, holder29), VOTER_STATE.DELEGATE_NAY, `holder29 should have 'delegateNay' state`)
       const vote = await voting.getVote(voteId)
       assertBn(vote.nay, bigExp(29, decimals), 'nay should be 29')
@@ -1094,15 +1094,15 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
 
       // Check amount of events
       assertAmountOfEvents(tx, 'CastVote', {expectedAmount: filteredDelegatedVoters.length})
-      assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
+      assertAmountOfEvents(tx, 'AttemptCastVoteAsDelegate', {expectedAmount: 1})
 
       // Check events content
       for (let i = 0; i < filteredDelegatedVoters.length; i++) {
         const {address, votingPower} = filteredDelegatedVoters[i]
         assertEvent(tx, 'CastVote', {index: i, expectedArgs: {voteId, voter: address, supports: false, stake: votingPower}})
       }
-      assertEvent(tx, 'CastVoteAsDelegate', {expectedArgs: {voteId, delegate: delegate1, supports: false}})
-      const votersFromEvent = getEventArgument(tx, 'CastVoteAsDelegate', 'voters')
+      assertEvent(tx, 'AttemptCastVoteAsDelegate', {expectedArgs: {voteId, delegate: delegate1}})
+      const votersFromEvent = getEventArgument(tx, 'AttemptCastVoteAsDelegate', 'voters')
       assertArraysEqualAsSets(filteredDelegatedVoters, votersFromEvent)
 
       // Check voters' state
@@ -1127,14 +1127,14 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
 
       // Check amount of events
       assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
-      assertAmountOfEvents(tx, 'CastVoteAsDelegate', {expectedAmount: 1})
+      assertAmountOfEvents(tx, 'AttemptCastVoteAsDelegate', {expectedAmount: 1})
 
       const holder29VP = bigExp(29, decimals)
 
       // Check events content
       assertEvent(tx, 'CastVote', { expectedArgs: {voteId, voter: holder29, supports: false, stake: holder29VP}})
-      assertEvent(tx, 'CastVoteAsDelegate', { expectedArgs: {voteId, delegate: delegate1, supports: false}})
-      const votersFromEvent = getEventArgument(tx, 'CastVoteAsDelegate', 'voters')
+      assertEvent(tx, 'AttemptCastVoteAsDelegate', { expectedArgs: {voteId, delegate: delegate1}})
+      const votersFromEvent = getEventArgument(tx, 'AttemptCastVoteAsDelegate', 'voters')
       assertArraysEqualAsSets([holder29], votersFromEvent)
 
       // Check voter's state

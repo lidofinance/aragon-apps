@@ -98,7 +98,7 @@ contract Voting is IForwarder, AragonApp {
     event ChangeObjectionPhaseTime(uint64 objectionPhaseTime);
     event AssignDelegate(address indexed voter, address indexed delegate);
     event UnassignDelegate(address indexed voter, address indexed unassignedDelegate);
-    event CastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, bool supports, address[] voters, bool[] votedFor);
+    event AttemptCastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, address[] voters);
 
     modifier voteExists(uint256 _voteId) {
         require(_voteId < votesLength, ERROR_NO_VOTE);
@@ -282,7 +282,6 @@ contract Voting is IForwarder, AragonApp {
         bool votedForAtLeastOne = false;
         address voter;
         uint256 votingPower;
-        bool[] memory votedFor = new bool[](_voters.length);
         for (uint256 i = 0; i < _voters.length; ++i) {
             voter = _voters[i];
             // This could re-enter, though we can assume the governance token is not malicious
@@ -290,13 +289,12 @@ contract Voting is IForwarder, AragonApp {
             require(votingPower > 0, ERROR_NO_VOTING_POWER);
             if (_canVoteFor(vote_, voter, msg.sender)) {
                 _vote(_voteId, _supports, voter, true, votingPower);
-                votedFor[i] = true;
                 votedForAtLeastOne = true;
             }
         }
         require(votedForAtLeastOne, ERROR_CAN_NOT_VOTE_FOR);
 
-        emit CastVoteAsDelegate(_voteId, msg.sender, _supports, _voters, votedFor);
+        emit AttemptCastVoteAsDelegate(_voteId, msg.sender, _voters);
     }
 
     /**
