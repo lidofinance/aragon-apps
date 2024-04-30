@@ -43,8 +43,6 @@ contract Voting is IForwarder, AragonApp {
     string private constant ERROR_DELEGATE_NOT_SET = "VOTING_DELEGATE_NOT_SET";
     string private constant ERROR_SELF_DELEGATE = "VOTING_SELF_DELEGATE";
     string private constant ERROR_DELEGATE_SAME_AS_PREV = "VOTING_DELEGATE_SAME_AS_PREV";
-    string private constant ERROR_INVALID_LIMIT = "VOTING_INVALID_LIMIT";
-    string private constant ERROR_INVALID_OFFSET = "VOTING_INVALID_OFFSET";
     string private constant ERROR_MAX_DELEGATED_VOTERS_REACHED = "VOTING_MAX_DELEGATED_VOTERS_REACHED";
 
     enum VoterState { Absent, Yea, Nay, DelegateYea, DelegateNay }
@@ -448,18 +446,17 @@ contract Voting is IForwarder, AragonApp {
      */
     function getDelegatedVoters(address _delegate, uint256 _offset, uint256 _limit) external view returns (address[] memory voters) {
         require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
-        require(_limit > 0, ERROR_INVALID_LIMIT);
-        uint256 delegatedVotersCount = delegatedVoters[_delegate].addresses.length;
-        if (delegatedVotersCount == 0) {
+
+        address[] storage votersList = delegatedVoters[_delegate].addresses;
+        uint256 votersCount = votersList.length;
+        if (_offset >= votersCount) {
             return voters;
         }
-        require(_offset < delegatedVotersCount, ERROR_INVALID_OFFSET);
 
-        uint256 returnCount = _offset.add(_limit) > delegatedVotersCount ? delegatedVotersCount.sub(_offset) : _limit;
+        uint256 returnCount = _offset.add(_limit) > votersCount ? votersCount.sub(_offset) : _limit;
         voters = new address[](returnCount);
-        address voter;
         for (uint256 i = 0; i < returnCount; ++i) {
-            voter = delegatedVoters[_delegate].addresses[_offset + i];
+            address voter = votersList[_offset + i];
             voters[i] = voter;
         }
         return voters;
