@@ -279,13 +279,11 @@ contract Voting is IForwarder, AragonApp {
         require(_isValidPhaseToVote(vote_, _supports), ERROR_CAN_NOT_VOTE);
 
         bool votedForAtLeastOne = false;
-        address voter;
-        uint256 votingPower;
         for (uint256 i = 0; i < _voters.length; ++i) {
-            voter = _voters[i];
+            address voter = _voters[i];
             // ↓ ↓ ↓ A legacy comment from the original Aragon codebase ↓ ↓ ↓
             // This could re-enter, though we can assume the governance token is not malicious
-            votingPower = token.balanceOfAt(voter, vote_.snapshotBlock);
+            uint256 votingPower = token.balanceOfAt(voter, vote_.snapshotBlock);
 
             // Voting power check is not used the same way as `_canVoteFor` to have consistency between `attemptVoteForMultiple` and `vote`.
             // Moreover, it's impossible to front-run a delegate by moving tokens before their voting attempt,
