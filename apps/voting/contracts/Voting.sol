@@ -559,10 +559,12 @@ contract Voting is IForwarder, AragonApp {
         VoterState state = vote_.voters[_voter];
 
         // If voter had previously voted, decrease count
-        if (state == VoterState.Yea || state == VoterState.DelegateYea) {
-            vote_.yea = vote_.yea.sub(_votingPower);
-        } else if (state == VoterState.Nay || state == VoterState.DelegateNay) {
-            vote_.nay = vote_.nay.sub(_votingPower);
+        if (state != VoterState.Absent) {
+            if (state == VoterState.Yea || state == VoterState.DelegateYea) {
+                vote_.yea = vote_.yea.sub(_votingPower);
+            } else { // Remaining states are Nay and DelegateNay
+                vote_.nay = vote_.nay.sub(_votingPower);
+            }
         }
 
         if (_supports) {
