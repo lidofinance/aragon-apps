@@ -64,7 +64,7 @@ contract Voting is IForwarder, AragonApp {
         mapping (address => VoterState) voters;
     }
 
-    struct DelegatedAddressList {
+    struct DelegatedVoters {
         address[] addresses;
     }
 
@@ -83,10 +83,8 @@ contract Voting is IForwarder, AragonApp {
     uint256 public votesLength;
     uint64 public objectionPhaseTime;
 
-    // delegate -> [delegated voter address]
-    mapping(address => DelegatedAddressList) private delegatedVoters;
-    // voter -> delegate
-    mapping(address => Delegate) private delegates;
+    mapping(address /* delegate */ => DelegatedVoters) private delegatedVoters;
+    mapping(address /* voter */ => Delegate) private delegates;
 
     event StartVote(uint256 indexed voteId, address indexed creator, string metadata);
     event CastVote(uint256 indexed voteId, address indexed voter, bool supports, uint256 stake);
@@ -96,7 +94,7 @@ contract Voting is IForwarder, AragonApp {
     event ChangeMinQuorum(uint64 minAcceptQuorumPct);
     event ChangeVoteTime(uint64 voteTime);
     event ChangeObjectionPhaseTime(uint64 objectionPhaseTime);
-    event AssignDelegate(address indexed voter, address indexed delegate);
+    event AssignDelegate(address indexed voter, address indexed assignedDelegate);
     event UnassignDelegate(address indexed voter, address indexed unassignedDelegate);
     event AttemptCastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, address[] voters);
 
@@ -226,6 +224,7 @@ contract Voting is IForwarder, AragonApp {
     function vote(uint256 _voteId, bool _supports, bool /* _executesIfDecided_deprecated */) external voteExists(_voteId) {
         Vote storage vote_ = votes[_voteId];
         require(_isValidPhaseToVote(vote_, _supports), ERROR_CAN_NOT_VOTE);
+        // ↓ ↓ ↓ A legacy comment from the original Aragon codebase ↓ ↓ ↓
         // This could re-enter, though we can assume the governance token is not malicious
         uint256 votingPower = token.balanceOfAt(msg.sender, vote_.snapshotBlock);
         require(votingPower > 0, ERROR_NO_VOTING_POWER);
@@ -284,6 +283,7 @@ contract Voting is IForwarder, AragonApp {
         uint256 votingPower;
         for (uint256 i = 0; i < _voters.length; ++i) {
             voter = _voters[i];
+            // ↓ ↓ ↓ A legacy comment from the original Aragon codebase ↓ ↓ ↓
             // This could re-enter, though we can assume the governance token is not malicious
             votingPower = token.balanceOfAt(voter, vote_.snapshotBlock);
 
@@ -517,8 +517,7 @@ contract Voting is IForwarder, AragonApp {
      * @return the array of governance token balances
      */
     function getVotingPowerMultipleAtVote(uint256 _voteId, address[] _voters) external view voteExists(_voteId) returns (uint256[] memory balances) {
-        Vote storage vote_ = votes[_voteId];
-        return _getVotingPowerMultipleAt(_voters, vote_.snapshotBlock);
+        return _getVotingPowerMultipleAt(_voters, votes[_voteId].snapshotBlock);
     }
 
     // Internal fns
@@ -611,10 +610,11 @@ contract Voting is IForwarder, AragonApp {
      * @param _voter address of the voter
      */
     function _addDelegatedAddressFor(address _delegate, address _voter) internal {
-        uint256 delegatedVotersCount = delegatedVoters[_delegate].addresses.length;
+        address[] storage votersList = delegatedVoters[_delegate].addresses;
+        uint256 delegatedVotersCount = votersList.length;
         require(delegatedVotersCount <= UINT_96_MAX, ERROR_MAX_DELEGATED_VOTERS_REACHED);
 
-        delegatedVoters[_delegate].addresses.push(_voter);
+        votersList.push(_voter);
         delegates[_voter] = Delegate(_delegate, uint96(delegatedVotersCount));
         emit AssignDelegate(_voter, _delegate);
     }

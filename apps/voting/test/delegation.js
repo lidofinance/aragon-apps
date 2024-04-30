@@ -71,7 +71,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
     const assignDelegate = async (delegate, holder ) => {
       const tx = await voting.assignDelegate(delegate, {from: holder})
       assertEvent(tx, 'AssignDelegate', {
-        expectedArgs: {voter: holder, delegate}
+        expectedArgs: {voter: holder, assignedDelegate: delegate}
       })
       assertAmountOfEvents(tx, 'AssignDelegate', {expectedAmount: 1})
     }
@@ -169,7 +169,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
 
       const tx = await voting.assignDelegate(delegate1, {from: holder29})
       assertEvent(tx, 'AssignDelegate', {
-        expectedArgs: {voter: holder29, delegate: delegate1}
+        expectedArgs: {voter: holder29, assignedDelegate: delegate1}
       })
       assertAmountOfEvents(tx, 'AssignDelegate', {expectedAmount: 1})
 
@@ -271,13 +271,13 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
 
       const tx1 = await voting.assignDelegate(delegate1, {from: holder29})
       assertEvent(tx1, 'AssignDelegate', {
-        expectedArgs: {voter: holder29, delegate: delegate1}
+        expectedArgs: {voter: holder29, assignedDelegate: delegate1}
       })
       assertAmountOfEvents(tx1, 'AssignDelegate', {expectedAmount: 1})
 
       const tx2 = await voting.assignDelegate(delegate1, {from: holder51})
       assertEvent(tx2, 'AssignDelegate', {
-        expectedArgs: {voter: holder51, delegate: delegate1}
+        expectedArgs: {voter: holder51, assignedDelegate: delegate1}
       })
       assertAmountOfEvents(tx2, 'AssignDelegate', {expectedAmount: 1})
 
