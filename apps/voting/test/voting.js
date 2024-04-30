@@ -205,6 +205,24 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
           assert.equal(await voting.getVoterState(voteId, nonHolder), VOTER_STATE.ABSENT, 'nonHolder should not have voted')
         })
 
+        it('fails creating a vote without CREATE_VOTES_ROLE permission', async () => {
+          await aclP.revokePermission(ANY_ENTITY, voting.address, CREATE_VOTES_ROLE, { from: root })
+          await assertRevert(voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata', { from: holder29 }), ERRORS.APP_AUTH_FAILED)
+          await assertRevert(voting.methods['newVote(bytes,string,bool,bool)'](encodeCallScript([]), '', true, false, { from: holder29 }), ERRORS.APP_AUTH_FAILED)
+
+          await aclP.grantPermission(holder51, voting.address, CREATE_VOTES_ROLE, { from: root })
+          await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata', { from: holder51 })
+          await voting.methods['newVote(bytes,string,bool,bool)'](encodeCallScript([]), '', true, false, { from: holder51 })
+        })
+
+        it('fails trying to execute a non-existent vote', async () => {
+          await assertRevert(voting.executeVote(voteId + 1), ERRORS.VOTING_NO_VOTE)
+        })
+
+        it('fails getting a voter state for a non-existent vote', async () => {
+          await assertRevert(voting.getVoterState(voteId + 1, holder51), ERRORS.VOTING_NO_VOTE)
+        })
+
         it('fails getting a vote out of bounds', async () => {
           await assertRevert(voting.getVote(voteId + 1), ERRORS.VOTING_NO_VOTE)
         })
@@ -226,6 +244,14 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
           await voting.executeVote(voteId) // exec doesn't fail
         })
 
+        it('fails changing required support without MODIFY_SUPPORT_ROLE permission', async () => {
+          await aclP.revokePermission(ANY_ENTITY, voting.address, MODIFY_SUPPORT_ROLE, { from: root })
+          await assertRevert(voting.changeSupportRequiredPct(pct16(70), { from: holder29 }), ERRORS.APP_AUTH_FAILED)
+
+          await aclP.grantPermission(holder51, voting.address, MODIFY_SUPPORT_ROLE, { from: root })
+          await voting.changeSupportRequiredPct(pct16(70), { from: holder51 })
+        })
+
         it('changing min quorum doesnt affect vote min quorum', async () => {
           await voting.changeMinAcceptQuorumPct(pct16(50))
 
@@ -243,6 +269,18 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
           const state = await voting.getVote(voteId)
           assertBn(state[5], minimumAcceptanceQuorum, 'acceptance quorum in vote should stay equal')
           await voting.executeVote(voteId) // exec doesn't fail
+        })
+
+        it('fails changing min quorum without MODIFY_QUORUM_ROLE permission', async () => {
+          await aclP.revokePermission(ANY_ENTITY, voting.address, MODIFY_QUORUM_ROLE, { from: root })
+          await assertRevert(voting.changeMinAcceptQuorumPct(pct16(50), { from: holder29 }), ERRORS.APP_AUTH_FAILED)
+
+          await aclP.grantPermission(holder51, voting.address, MODIFY_QUORUM_ROLE, { from: root })
+          await voting.changeMinAcceptQuorumPct(pct16(50), { from: holder51 })
+        })
+
+        it(`fails to vote for a non-existent vote`, async () => {
+          await assertRevert(voting.vote(voteId + 1, false, true, { from: holder29 }), ERRORS.VOTING_NO_VOTE)
         })
 
         it('holder can vote', async () => {
@@ -297,6 +335,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
         })
 
         it('canVote check works', async () => {
+          await assertRevert(voting.canVote(voteId + 1, holder29), ERRORS.VOTING_NO_VOTE)
           assert.equal(await voting.canVote(voteId, holder29), true, 'should be able to vote')
           await voting.mockIncreaseTime(mainPhase + 1)
           assert.equal(await voting.canVote(voteId, holder29), true, 'should be unable to vote')
@@ -310,6 +349,7 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
             return (await voting.getVote(voteId))[phaseIndex]
           }
 
+          await assertRevert(voting.getVotePhase(voteId + 1), ERRORS.VOTING_NO_VOTE)
           const MAIN_PHASE = 0
           assert.equal(await voting.getVotePhase(voteId), MAIN_PHASE, 'should be main phase')
           assert.equal(await extractPhaseFromGetVote(voteId), MAIN_PHASE, 'should be main phase')
@@ -489,6 +529,8 @@ contract('Voting App', ([root, holder1, holder2, holder20, holder29, holder51, n
     it('new vote cannot be executed before voting', async () => {
       // Account creating vote does not have any tokens and therefore doesn't vote
       const voteId = createdVoteId(await voting.newVote(EMPTY_CALLS_SCRIPT, 'metadata'))
+
+      await assertRevert(voting.canExecute(voteId + 1), ERRORS.VOTING_NO_VOTE)
 
       assert.isFalse(await voting.canExecute(voteId), 'vote cannot be executed')
 

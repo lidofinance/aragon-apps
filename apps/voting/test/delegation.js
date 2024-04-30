@@ -4,6 +4,7 @@ const { assertBn, assertRevert, assertAmountOfEvents, assertEvent } = require('@
 const { pct16, bn, bigExp, getEventArgument, ZERO_ADDRESS } = require('@aragon/contract-helpers-test')
 const { newDao, installNewApp, encodeCallScript, ANY_ENTITY, EMPTY_CALLS_SCRIPT } = require('@aragon/contract-helpers-test/src/aragon-os')
 const { assert } = require('chai')
+const { getStorageAt, setStorageAt, impersonateAccount } = require("@nomicfoundation/hardhat-network-helpers")
 
 const Voting = artifacts.require('VotingMock')
 
@@ -177,6 +178,31 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
 
       delegatedVoters = await voting.getDelegatedVoters(delegate1, 0, 1)
       assertArraysEqualAsSets(delegatedVoters, [holder29], 'delegate1 should be a delegate of holder29')
+    })
+
+    it(`assignment fails if delegatedVoters array is overflown`, async () => {
+      const arrayLengthSlotIndex = 5
+      const paddedAddress = ethers.utils.hexZeroPad(delegate1, 32)
+      const paddedSlot = ethers.utils.hexZeroPad(arrayLengthSlotIndex, 32)
+      const arrayLengthSlot = ethers.utils.solidityKeccak256(['address', 'uint256'], [paddedAddress, paddedSlot])
+
+      // Check that slot index is correct
+      let storage = await getStorageAt(voting.address, arrayLengthSlot)
+      assert(ethers.BigNumber.from(storage).eq(0), 'delegatedVoters array length should be 0')
+
+      await voting.assignDelegate(delegate1, {from: holder29})
+      storage = await getStorageAt(voting.address, arrayLengthSlot)
+      assert(ethers.BigNumber.from(storage).eq(1), 'delegatedVoters array length should be 1 after assignment')
+
+      // Update slot value to max uint96
+      const uint96Max = ethers.BigNumber.from(2).pow(96)
+      await setStorageAt(voting.address, arrayLengthSlot, uint96Max)
+
+      // Check that revert is thrown when trying to assign a delegate
+      await assertRevert(
+        voting.assignDelegate(delegate1, {from: holder51}),
+        ERRORS.VOTING_MAX_DELEGATED_VOTERS_REACHED
+      )
     })
 
     it('voter can remove delegate', async () => {
@@ -835,6 +861,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       account: holder29,
       balance: bigExp(29, decimals)
     }]
+    let voteId
 
     beforeEach(async () => {
       token = await MiniMeToken.new(ZERO_ADDRESS, ZERO_ADDRESS, 0, 'n', decimals, 'n', true) // empty parameters minime
@@ -847,6 +874,12 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       }
 
       executionTarget = await ExecutionTarget.new()
+
+      const action = {to: executionTarget.address, calldata: executionTarget.contract.methods.execute().encodeABI()}
+      script = encodeCallScript([action, action])
+
+      const receipt = await voting.methods['newVote(bytes,string)'](script, 'metadata', {from: holder51});
+      voteId = getEventArgument(receipt, 'StartVote', 'voteId')
     })
 
     it('should return correct delegated voters count', async () => {
@@ -868,8 +901,15 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
 
     it(`revert if "_limit" is 0`, async () => {
       await assertRevert(
-        voting.getDelegatedVoters(ZERO_ADDRESS, 0, defaultLimit),
-        ERRORS.VOTING_ZERO_ADDRESS_PASSED
+        voting.getDelegatedVoters(delegate1, 0, 0),
+        ERRORS.VOTING_INVALID_LIMIT
+      )
+    })
+
+    it(`revert if "_offset" more or equal than delegated voters count`, async () => {
+      await assertRevert(
+        voting.getDelegatedVoters(delegate1, 10, 1),
+        ERRORS.VOTING_INVALID_OFFSET
       )
     })
 
@@ -931,6 +971,31 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       const delegate = await voting.getDelegate(holder1)
       assert.equal(delegate, delegate1, 'should return delegate1 address')
     })
+
+    it(`voting power getters`, async () => {
+      const initialVotingPower = voters.map(v => v.balance.toString())
+      const votersAddresses = voters.map(v => v.account)
+
+      await assertRevert(voting.getVotingPowerMultipleAtVote(voteId + 1, votersAddresses), ERRORS.VOTING_NO_VOTE)
+
+      const currentVotingPower = await voting.getVotingPowerMultiple(votersAddresses)
+      assertArraysEqualAsSets(currentVotingPower, initialVotingPower, 'current voting power values should match')
+
+      const updatedVoterIndex = 0
+      const vpAddition = bigExp(1, decimals)
+      await token.generateTokens(voters[updatedVoterIndex].account, vpAddition)
+      const updatedVotingPowerToCompare = voters.map((v, i) => {
+        if (i === updatedVoterIndex) {
+          return v.balance.add(vpAddition).toString()
+        }
+        return v.balance.toString()
+      })
+      const updatedVotingPower = await voting.getVotingPowerMultiple(votersAddresses)
+      assertArraysEqualAsSets(updatedVotingPower, updatedVotingPowerToCompare, 'current voting power values should match after update')
+
+      const votingPowerAtVote = await voting.getVotingPowerMultipleAtVote(voteId, votersAddresses)
+      assertArraysEqualAsSets(votingPowerAtVote, initialVotingPower, 'voting power at vote should match vp without update')
+    })
   })
 
   context('voting as delegate', () => {
@@ -965,6 +1030,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
         await token.generateTokens(voters[i].account, voters[i].balance)
         await voting.assignDelegate(delegate1, {from: voters[i].account})
       }
+      await token.generateTokens(ZERO_ADDRESS, bigExp(1, decimals))
 
       executionTarget = await ExecutionTarget.new()
 
@@ -985,6 +1051,7 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       await voting.vote(voteId, false, false, { from: holder29 })
       await voting.attemptVoteForMultiple(voteId, false, [holder51], {from: delegate1})
 
+      await assertRevert(voting.getVoterStateMultiple(voteId + 1, [holder51]), ERRORS.VOTING_NO_VOTE)
       const votersState = await voting.getVoterStateMultiple(voteId, [holder20, holder29, holder51])
       assert.equal(votersState[0], VOTER_STATE.YEA, `holder20 should have 'yea' state`)
       assert.equal(votersState[1], VOTER_STATE.NAY, `holder29 should have 'nay' state`)
@@ -1030,6 +1097,31 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       await assertRevert(
         voting.attemptVoteForMultiple(voteId, true, [holder51, holder2, holder1], {from: delegate1}),
         ERRORS.VOTING_NO_VOTING_POWER
+      )
+  })
+
+    it(`skip zero address passed`, async () => {
+      // Skip if zero address is one of the voters
+      let tx = await voting.attemptVoteForMultiple(voteId, true, [holder51, ZERO_ADDRESS], {from: delegate1})
+
+      assertAmountOfEvents(tx, 'CastVote', {expectedAmount: 1})
+      assertEvent(tx, 'CastVote', {expectedArgs: {voteId, voter: holder51, supports: true}})
+
+      // Revert if zero address is a delegate (can't delegate to zero address)
+      // This test was added to improve test coverage
+      await impersonateAccount(ZERO_ADDRESS)
+      const signerZero = await ethers.getSigner(ZERO_ADDRESS)
+      const signers = await ethers.getSigners();
+      await signers[0].sendTransaction({
+        to: signerZero.address,
+        value: ethers.utils.parseEther("1.0"),
+      });
+
+      // The revert is expected because the delegate is zero address, so it's
+      // impossible to delegate to it. But holder51 will be skipped.
+      await assertRevert(
+        voting.attemptVoteForMultiple(voteId, true, [holder51], {from: signerZero.address}),
+        ERRORS.VOTING_CAN_NOT_VOTE_FOR
       )
     })
 
