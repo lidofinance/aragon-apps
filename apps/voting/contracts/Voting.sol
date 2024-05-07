@@ -221,7 +221,10 @@ contract Voting is IForwarder, AragonApp {
     */
     function vote(uint256 _voteId, bool _supports, bool /* _executesIfDecided_deprecated */) external voteExists(_voteId) {
         Vote storage vote_ = votes[_voteId];
-        require(_isValidPhaseToVote(vote_, _supports), ERROR_CAN_NOT_VOTE);
+        require(_isVoteOpen(vote_), ERROR_CAN_NOT_VOTE);
+        VotePhase votePhase = _getVotePhase(vote_);
+        require(_isValidPhaseToVote(votePhase, _supports), ERROR_CAN_NOT_VOTE);
+
         /*
             In version 0.4.24 of Solidity, for view methods, a regular CALL is used instead of STATICCALL.
             This allows for the possibility of reentrance from the governance token.
@@ -231,7 +234,7 @@ contract Voting is IForwarder, AragonApp {
         // This could re-enter, though we can assume the governance token is not malicious
         uint256 votingPower = token.balanceOfAt(msg.sender, vote_.snapshotBlock);
         require(votingPower > 0, ERROR_NO_VOTING_POWER);
-        _vote(_voteId, _supports, msg.sender, false, votingPower);
+        _vote(_voteId, _supports, msg.sender, false, votingPower, votePhase);
     }
 
     /**
@@ -279,7 +282,9 @@ contract Voting is IForwarder, AragonApp {
      */
     function attemptVoteForMultiple(uint256 _voteId, bool _supports, address[] _voters) public voteExists(_voteId) {
         Vote storage vote_ = votes[_voteId];
-        require(_isValidPhaseToVote(vote_, _supports), ERROR_CAN_NOT_VOTE);
+        require(_isVoteOpen(vote_), ERROR_CAN_NOT_VOTE);
+        VotePhase votePhase = _getVotePhase(vote_);
+        require(_isValidPhaseToVote(votePhase, _supports), ERROR_CAN_NOT_VOTE);
 
         bool votedForAtLeastOne = false;
         for (uint256 i = 0; i < _voters.length; ++i) {
@@ -298,7 +303,7 @@ contract Voting is IForwarder, AragonApp {
             // but it is possible to front-run a delegate by unassigning them or voting before their voting attempt.
             require(votingPower > 0, ERROR_NO_VOTING_POWER);
             if (_canVoteFor(vote_, voter, msg.sender)) {
-                _vote(_voteId, _supports, voter, true, votingPower);
+                _vote(_voteId, _supports, voter, true, votingPower, votePhase);
                 votedForAtLeastOne = true;
             }
         }
@@ -557,7 +562,7 @@ contract Voting is IForwarder, AragonApp {
      * @param _voter The address of the voter
      * @param _isDelegate Whether the voter is a delegate
      */
-    function _vote(uint256 _voteId, bool _supports, address _voter, bool _isDelegate, uint256 _votingPower) internal {
+    function _vote(uint256 _voteId, bool _supports, address _voter, bool _isDelegate, uint256 _votingPower, VotePhase _votePhase) internal {
         Vote storage vote_ = votes[_voteId];
         VoterState state = vote_.voters[_voter];
 
@@ -584,7 +589,7 @@ contract Voting is IForwarder, AragonApp {
 
         emit CastVote(_voteId, _voter, _supports, _votingPower);
 
-        if (_getVotePhase(vote_) == VotePhase.Objection) {
+        if (_votePhase == VotePhase.Objection) {
             emit CastObjection(_voteId, _voter, _votingPower);
         }
     }
@@ -696,12 +701,12 @@ contract Voting is IForwarder, AragonApp {
     /**
     * @dev Internal function to check if the vote is open and given option is applicable at the current phase.
     *      It assumes the queried vote exists.
-    * @param vote_ The queried vote
+    * @param _votePhase The queried vote phase
     * @param _supports Whether the voter supports the vote
     * @return True if the given voter can participate a certain vote, false otherwise
     */
-    function _isValidPhaseToVote(Vote storage vote_, bool _supports) internal view returns (bool) {
-        return _isVoteOpen(vote_) && (!_supports || _getVotePhase(vote_) == VotePhase.Main);
+    function _isValidPhaseToVote(VotePhase _votePhase, bool _supports) internal view returns (bool) {
+        return !_supports || _votePhase == VotePhase.Main;
     }
 
     /**
