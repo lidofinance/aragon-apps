@@ -899,11 +899,9 @@ contract('Voting App (delegation)', ([root, holder1, holder2, holder20, holder29
       )
     })
 
-    it(`revert if "_limit" is 0`, async () => {
-      await assertRevert(
-        voting.getDelegatedVoters(delegate1, 0, 0),
-        ERRORS.VOTING_INVALID_LIMIT
-      )
+    it(`if "_limit" is 0, return empty array`, async () => {
+      const delegatedVoters = await voting.getDelegatedVoters(nonHolder, 0, 0)
+      assert(delegatedVoters.length === 0, 'votersList should be empty')
     })
 
     it(`if offset is more than length, return empty array`, async () => {

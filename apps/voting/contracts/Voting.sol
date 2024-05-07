@@ -222,7 +222,12 @@ contract Voting is IForwarder, AragonApp {
     function vote(uint256 _voteId, bool _supports, bool /* _executesIfDecided_deprecated */) external voteExists(_voteId) {
         Vote storage vote_ = votes[_voteId];
         require(_isValidPhaseToVote(vote_, _supports), ERROR_CAN_NOT_VOTE);
-        // ↓ ↓ ↓ A legacy comment from the original Aragon codebase ↓ ↓ ↓
+        /*
+            In version 0.4.24 of Solidity, for view methods, a regular CALL is used instead of STATICCALL.
+            This allows for the possibility of reentrance from the governance token.
+            However, we strongly assume here that the governance token is not malicious.
+            Below is a legacy comment from the original Aragon codebase.
+        */
         // This could re-enter, though we can assume the governance token is not malicious
         uint256 votingPower = token.balanceOfAt(msg.sender, vote_.snapshotBlock);
         require(votingPower > 0, ERROR_NO_VOTING_POWER);
@@ -279,7 +284,12 @@ contract Voting is IForwarder, AragonApp {
         bool votedForAtLeastOne = false;
         for (uint256 i = 0; i < _voters.length; ++i) {
             address voter = _voters[i];
-            // ↓ ↓ ↓ A legacy comment from the original Aragon codebase ↓ ↓ ↓
+            /*
+                In version 0.4.24 of Solidity, for view methods, a regular CALL is used instead of STATICCALL.
+                This allows for the possibility of reentrance from the governance token.
+                However, we strongly assume here that the governance token is not malicious.
+                Below is a legacy comment from the original Aragon codebase.
+            */
             // This could re-enter, though we can assume the governance token is not malicious
             uint256 votingPower = token.balanceOfAt(voter, vote_.snapshotBlock);
 
@@ -456,10 +466,8 @@ contract Voting is IForwarder, AragonApp {
         uint256 returnCount = _offset.add(_limit) > votersCount ? votersCount.sub(_offset) : _limit;
         voters = new address[](returnCount);
         for (uint256 i = 0; i < returnCount; ++i) {
-            address voter = votersList[_offset + i];
-            voters[i] = voter;
+            voters[i] = votersList[_offset + i];
         }
-        return voters;
     }
 
     /**
@@ -553,7 +561,11 @@ contract Voting is IForwarder, AragonApp {
         Vote storage vote_ = votes[_voteId];
         VoterState state = vote_.voters[_voter];
 
-        // If voter had previously voted, decrease count
+
+        /*
+            If voter had previously voted, decrease count.
+            Since the most common case is voter voting once, the additional check here works as a gas optimization.
+        */
         if (state != VoterState.Absent) {
             if (state == VoterState.Yea || state == VoterState.DelegateYea) {
                 vote_.yea = vote_.yea.sub(_votingPower);
@@ -648,7 +660,6 @@ contract Voting is IForwarder, AragonApp {
         for (uint256 i = 0; i < votersCount; ++i) {
             balances[i] = token.balanceOfAt(_voters[i], _blockNumber);
         }
-        return balances;
     }
 
     /**
