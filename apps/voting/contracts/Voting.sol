@@ -94,6 +94,10 @@ contract Voting is IForwarder, AragonApp {
     event ChangeObjectionPhaseTime(uint64 objectionPhaseTime);
     event AssignDelegate(address indexed voter, address indexed assignedDelegate);
     event UnassignDelegate(address indexed voter, address indexed unassignedDelegate);
+
+    // IMPORTANT: The voters array contains ALL voters the vote was attempted.
+    // It's not possible to distinguish successful and skipped votes based only on this event.
+    // See the `attemptVoteForMultiple` method for details.
     event AttemptCastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, address[] voters);
 
     modifier voteExists(uint256 _voteId) {
@@ -225,13 +229,9 @@ contract Voting is IForwarder, AragonApp {
         VotePhase votePhase = _getVotePhase(vote_);
         require(_isValidPhaseToVote(votePhase, _supports), ERROR_CAN_NOT_VOTE);
 
-        /*
-            In version 0.4.24 of Solidity, for view methods, a regular CALL is used instead of STATICCALL.
-            This allows for the possibility of reentrance from the governance token.
-            However, we strongly assume here that the governance token is not malicious.
-            Below is a legacy comment from the original Aragon codebase.
-        */
-        // This could re-enter, though we can assume the governance token is not malicious
+        // In version 0.4.24 of Solidity, for view methods, a regular CALL is used instead of STATICCALL.
+        // This allows for the possibility of reentrance from the governance token.
+        // However, we strongly assume here that the governance token is not malicious.
         uint256 votingPower = token.balanceOfAt(msg.sender, vote_.snapshotBlock);
         require(votingPower > 0, ERROR_NO_VOTING_POWER);
         _vote(_voteId, _supports, msg.sender, false, votingPower, votePhase);
@@ -290,16 +290,14 @@ contract Voting is IForwarder, AragonApp {
         bool votedForAtLeastOne = false;
         for (uint256 i = 0; i < _voters.length; ++i) {
             address voter = _voters[i];
-            /*
-                In version 0.4.24 of Solidity, for view methods, a regular CALL is used instead of STATICCALL.
-                This allows for the possibility of reentrance from the governance token.
-                However, we strongly assume here that the governance token is not malicious.
-                Below is a legacy comment from the original Aragon codebase.
-            */
-            // This could re-enter, though we can assume the governance token is not malicious
+
+            // In version 0.4.24 of Solidity, for view methods, a regular CALL is used instead of STATICCALL.
+            // This allows for the possibility of reentrance from the governance token.
+            // However, we strongly assume here that the governance token is not malicious.
             uint256 votingPower = token.balanceOfAt(voter, vote_.snapshotBlock);
 
-           // A strict check for balance was introduced in order to achieve the same logic as in the `vote` fn
+            // A strict check for balance was introduced to have a persistent logic with the `vote` method.
+            // It's not possible to front-run the voting attempt with balance manipulation since the balances are being checked at the vote's snapshot block
             require(votingPower > 0, ERROR_NO_VOTING_POWER);
             // However, this check is not strict, because otherwise it could lead to a front-run attack, ruining the whole attempt
             if (_canVoteFor(vote_, voter, msg.sender)) {
@@ -309,6 +307,9 @@ contract Voting is IForwarder, AragonApp {
         }
         require(votedForAtLeastOne, ERROR_CAN_NOT_VOTE_FOR);
 
+        // IMPORTANT: The voters array contains ALL voters the vote was attempted.
+        // It's not possible to distinguish successful and skipped votes based only on this event.
+        // To filter votes, use this event along with the `CastVote` event, which is emitted for each successful voting attempt.
         emit AttemptCastVoteAsDelegate(_voteId, msg.sender, _voters);
     }
 
@@ -574,10 +575,8 @@ contract Voting is IForwarder, AragonApp {
         VoterState state = vote_.voters[_voter];
 
 
-        /*
-            If voter had previously voted, decrease count.
-            Since the most common case is voter voting once, the additional check here works as a gas optimization.
-        */
+        // If voter had previously voted, decrease count.
+        // Since the most common case is voter voting once, the additional check here works as a gas optimization.
         if (state != VoterState.Absent) {
             if (state == VoterState.Yea || state == VoterState.DelegateYea) {
                 vote_.yea = vote_.yea.sub(_votingPower);
