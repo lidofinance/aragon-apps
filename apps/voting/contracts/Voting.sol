@@ -234,7 +234,7 @@ contract Voting is IForwarder, AragonApp {
         // However, we strongly assume here that the governance token is not malicious.
         uint256 votingPower = token.balanceOfAt(msg.sender, vote_.snapshotBlock);
         require(votingPower > 0, ERROR_NO_VOTING_POWER);
-        _vote(_voteId, _supports, msg.sender, false, votingPower, votePhase);
+        _vote(_voteId, votePhase, /* voter */ msg.sender, _supports, votingPower, /* isDelegate */ false);
     }
 
     /**
@@ -299,9 +299,11 @@ contract Voting is IForwarder, AragonApp {
             // A strict check for balance was introduced to have a persistent logic with the `vote` method.
             // It's not possible to front-run the voting attempt with balance manipulation since the balances are being checked at the vote's snapshot block
             require(votingPower > 0, ERROR_NO_VOTING_POWER);
-            // However, this check is not strict, because otherwise it could lead to a front-run attack, ruining the whole attempt
+            // The _canVoteFor() check below does not revert to avoid a situation where a voter votes by themselves
+            // or undelegates previously delegated voting power before the delegate sends a transaction. This approach
+            // helps protect the entire transaction from failing due to the actions of a single misbehaving voter.
             if (_canVoteFor(vote_, voter, msg.sender)) {
-                _vote(_voteId, _supports, voter, true, votingPower, votePhase);
+                _vote(_voteId, votePhase, voter, _supports, votingPower, /* isDelegate */ true);
                 votedForAtLeastOne = true;
             }
         }
@@ -570,10 +572,9 @@ contract Voting is IForwarder, AragonApp {
      * @param _voter Address of the voter
      * @param _isDelegate Whether the voter is a delegate
      */
-    function _vote(uint256 _voteId, bool _supports, address _voter, bool _isDelegate, uint256 _votingPower, VotePhase _votePhase) internal {
+    function _vote(uint256 _voteId, VotePhase _votePhase, address _voter, bool _supports, uint256 _votingPower, bool _isDelegate) internal {
         Vote storage vote_ = votes[_voteId];
         VoterState state = vote_.voters[_voter];
-
 
         // If voter had previously voted, decrease count.
         // Since the most common case is voter voting once, the additional check here works as a gas optimization.
@@ -711,7 +712,7 @@ contract Voting is IForwarder, AragonApp {
     * @param _supports Whether the voter supports the vote
     * @return True if the given voter can participate a certain vote, false otherwise
     */
-    function _isValidPhaseToVote(VotePhase _votePhase, bool _supports) internal view returns (bool) {
+    function _isValidPhaseToVote(VotePhase _votePhase, bool _supports) internal pure returns (bool) {
         return !_supports || _votePhase == VotePhase.Main;
     }
 
