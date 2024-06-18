@@ -23,8 +23,8 @@ contract Voting is IForwarder, AragonApp {
     bytes32 public constant UNSAFELY_MODIFY_VOTE_TIME_ROLE = keccak256("UNSAFELY_MODIFY_VOTE_TIME_ROLE");
 
     uint64 public constant PCT_BASE = 10 ** 18; // 0% = 0; 1% = 10^16; 100% = 10^18
-
     uint256 private constant UINT_96_MAX = 2 ** 96 - 1;
+
     string private constant ERROR_NO_VOTE = "VOTING_NO_VOTE";
     string private constant ERROR_INIT_PCTS = "VOTING_INIT_PCTS";
     string private constant ERROR_CHANGE_SUPPORT_PCTS = "VOTING_CHANGE_SUPPORT_PCTS";
@@ -277,6 +277,11 @@ contract Voting is IForwarder, AragonApp {
     /**
      * @notice Vote `_supports ? 'yes' : 'no'` in vote #`_voteId` on behalf of the `_voters` list.
      *         Each voter from the list must have assigned the sender as their delegate with `assignDelegate`.
+     * @dev By the delegation mechanism design, it is possible for a misbehaving voter to front-run a delegate by voting
+     * or unassigning the delegation before the delegate's vote. That is why checks of the address belonging to
+     * the list of delegated voters and the voter's state are unstrict, hence the "attempt" word in the function name.
+     * On the other hand, the voter's voting power is being checked at the vote's snapshot block, making a potential
+     * manipulation by moving voting power from one address to another worthless.
      * @param _voteId Vote identifier
      * @param _supports Whether the delegate supports the vote
      * @param _voters List of voters
