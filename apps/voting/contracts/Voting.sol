@@ -472,7 +472,7 @@ contract Voting is IForwarder, AragonApp {
 
         address[] storage votersList = delegatedVoters[_delegate].addresses;
         uint256 votersCount = votersList.length;
-        if (_offset >= votersCount) {
+        if (_offset >= votersCount || votersCount == 0) {
             return voters;
         }
 
