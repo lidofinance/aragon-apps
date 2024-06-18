@@ -760,11 +760,9 @@ contract Voting is IForwarder, AragonApp {
     * @return True if less than voteTime has passed since the vote start
     */
     function _isVoteOpen(Vote storage vote_) internal view returns (bool) {
-        /*
-            The `!vote_.executed` check must stay in place.
-            In a particular case `unsafelyChangeVoteTime` call might
-            break the vote state and make it possible to vote for the executed vote.
-        */
+        // The `!vote_.executed` check must stay in place.
+        // In a particular case `unsafelyChangeVoteTime` call might
+        // break the vote state and make it possible to vote for the executed vote.
         return getTimestamp64() < vote_.startDate.add(voteTime) && !vote_.executed;
     }
 
