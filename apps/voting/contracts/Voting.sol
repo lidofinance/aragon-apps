@@ -45,7 +45,13 @@ contract Voting is IForwarder, AragonApp {
     string private constant ERROR_DELEGATE_SAME_AS_PREV = "VOTING_DELEGATE_SAME_AS_PREV";
     string private constant ERROR_MAX_DELEGATED_VOTERS_REACHED = "VOTING_MAX_DELEGATED_VOTERS_REACHED";
 
-    enum VoterState { Absent, Yea, Nay, DelegateYea, DelegateNay }
+    enum VoterState {
+        Absent, // Voter has not voted
+        Yea, // Voter has voted for
+        Nay, // Voter has voted against
+        DelegateYea, // Delegate has voted for on behalf of the voter
+        DelegateNay // Delegate has voted against on behalf of the voter
+    }
 
     enum VotePhase { Main, Objection, Closed }
 
