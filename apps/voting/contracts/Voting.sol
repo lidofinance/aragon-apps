@@ -293,13 +293,14 @@ contract Voting is IForwarder, AragonApp {
         require(_isValidPhaseToVote(votePhase, _supports), ERROR_CAN_NOT_VOTE);
 
         bool votedForAtLeastOne = false;
+        uint64 voteSnapshotBlock = vote_.snapshotBlock;
         for (uint256 i = 0; i < _voters.length; ++i) {
             address voter = _voters[i];
 
             // In version 0.4.24 of Solidity, for view methods, a regular CALL is used instead of STATICCALL.
             // This allows for the possibility of reentrance from the governance token.
             // However, we strongly assume here that the governance token is not malicious.
-            uint256 votingPower = token.balanceOfAt(voter, vote_.snapshotBlock);
+            uint256 votingPower = token.balanceOfAt(voter, voteSnapshotBlock);
 
             // A strict check for balance was introduced to have a persistent logic with the `vote` method.
             // It's not possible to front-run the voting attempt with balance manipulation since the balances are being checked at the vote's snapshot block
