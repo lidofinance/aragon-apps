@@ -225,7 +225,6 @@ contract Voting is IForwarder, AragonApp {
     */
     function vote(uint256 _voteId, bool _supports, bool /* _executesIfDecided_deprecated */) external voteExists(_voteId) {
         Vote storage vote_ = votes[_voteId];
-        require(_isVoteOpen(vote_), ERROR_CAN_NOT_VOTE);
         VotePhase votePhase = _getVotePhase(vote_);
         require(_isValidPhaseToVote(votePhase, _supports), ERROR_CAN_NOT_VOTE);
 
@@ -288,7 +287,6 @@ contract Voting is IForwarder, AragonApp {
      */
     function attemptVoteForMultiple(uint256 _voteId, bool _supports, address[] _voters) public voteExists(_voteId) {
         Vote storage vote_ = votes[_voteId];
-        require(_isVoteOpen(vote_), ERROR_CAN_NOT_VOTE);
         VotePhase votePhase = _getVotePhase(vote_);
         require(_isValidPhaseToVote(votePhase, _supports), ERROR_CAN_NOT_VOTE);
 
@@ -395,7 +393,7 @@ contract Voting is IForwarder, AragonApp {
     function canVote(uint256 _voteId, address _voter) external view voteExists(_voteId) returns (bool) {
         Vote storage vote_ = votes[_voteId];
         uint256 votingPower = token.balanceOfAt(_voter, vote_.snapshotBlock);
-        return _isVoteOpen(vote_) && votingPower > 0;
+        return _getVotePhase(vote_) != VotePhase.Closed && votingPower > 0;
     }
 
     /**
@@ -444,7 +442,6 @@ contract Voting is IForwarder, AragonApp {
     {
         Vote storage vote_ = votes[_voteId];
 
-        open = _isVoteOpen(vote_);
         executed = vote_.executed;
         startDate = vote_.startDate;
         snapshotBlock = vote_.snapshotBlock;
@@ -455,6 +452,7 @@ contract Voting is IForwarder, AragonApp {
         votingPower = vote_.votingPower;
         script = vote_.executionScript;
         phase = _getVotePhase(vote_);
+        open = phase != VotePhase.Closed;
     }
 
     /**
@@ -694,7 +692,7 @@ contract Voting is IForwarder, AragonApp {
         }
 
         // Vote ended?
-        if (_isVoteOpen(vote_)) {
+        if (_getVotePhase(vote_) != VotePhase.Closed) {
             return false;
         }
 
@@ -720,7 +718,16 @@ contract Voting is IForwarder, AragonApp {
     * @return True if the given voter can participate a certain vote, false otherwise
     */
     function _isValidPhaseToVote(VotePhase _votePhase, bool _supports) internal pure returns (bool) {
-        return !_supports || _votePhase == VotePhase.Main;
+        // In the Main phase both Yea and Nay votes are allowed
+        if (_votePhase == VotePhase.Main) {
+            return true;
+        }
+        // During the Objection phase only Nay votes are allowed
+        if (_votePhase == VotePhase.Objection) {
+            return !_supports;
+        }
+        // It's not allowed to vote in any other cases
+        return false;
     }
 
     /**
@@ -755,13 +762,16 @@ contract Voting is IForwarder, AragonApp {
     function _getVotePhase(Vote storage vote_) internal view returns (VotePhase) {
         uint64 timestamp = getTimestamp64();
         uint64 voteTimeEnd = vote_.startDate.add(voteTime);
+        if (timestamp >= voteTimeEnd || vote_.executed) {
+            return VotePhase.Closed;
+        }
         if (timestamp < voteTimeEnd.sub(objectionPhaseTime)) {
             return VotePhase.Main;
         }
         if (timestamp < voteTimeEnd) {
             return VotePhase.Objection;
         }
-        return VotePhase.Closed;
+        assert(false); // Should never reach this point
     }
 
     /**
