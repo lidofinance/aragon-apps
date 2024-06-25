@@ -265,7 +265,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @notice Unassign `_delegate` from the sender and remove the sender from the `_delegate's` list of delegated addresses
+    * @notice Unassign `_delegate` from the sender and remove the sender from the `_delegate`'s list of delegated addresses
     */
     function unassignDelegate() external {
         address prevDelegate = delegates[msg.sender].delegate;
@@ -278,10 +278,10 @@ contract Voting is IForwarder, AragonApp {
      * @notice Vote `_supports ? 'yes' : 'no'` in vote #`_voteId` on behalf of the `_voters` list.
      *         Each voter from the list must have assigned the sender as their delegate with `assignDelegate`.
      * @dev By the delegation mechanism design, it is possible for a misbehaving voter to front-run a delegate by voting
-     * or unassigning the delegation before the delegate's vote. That is why checks of the address belonging to
-     * the list of delegated voters and the voter's state are unstrict, hence the "attempt" word in the function name.
-     * On the other hand, the voter's voting power is being checked at the vote's snapshot block, making a potential
-     * manipulation by moving voting power from one address to another worthless.
+     *      or unassigning the delegation before the delegate's vote. That is why checks of the address belonging to
+     *      the list of delegated voters and the voter's state are unstrict, hence the "attempt" word in the function name.
+     *      The voter's voting power is being fetched at the vote's snapshot block, making moving voting power
+     *      from one address to another worthless in the sense of harming the delegate's actions during the vote.
      * @param _voteId Vote identifier
      * @param _supports Whether the delegate supports the vote
      * @param _voters List of voters
@@ -388,7 +388,8 @@ contract Voting is IForwarder, AragonApp {
     *      created via `newVote(),` which requires initialization
     * @param _voteId Vote identifier
     * @param _voter Address of the voter
-    * @return True if the given voter can participate in the main phase of a certain vote, false otherwise
+    * @return True if the given voter can participate in the main phase of a certain vote
+    *         both directly and indirectly by a delegate voting for them, false otherwise
     */
     function canVote(uint256 _voteId, address _voter) external view voteExists(_voteId) returns (bool) {
         Vote storage vote_ = votes[_voteId];
@@ -466,10 +467,10 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-     * @notice Return the sliced list of delegated voters for `_delegate`
+     * @notice Return the sliced list of voters who delegated to the `_delegate`
      * @param _delegate Address of the delegate
      * @param _offset Number of delegated voters from the start of the list to skip
-     * @param _limit Number of delegated voters to return
+     * @param _limit Maximum number of delegated voters to return. The length of the returned slice can be lower than if the end of the list is reached
      * @return Array of delegated voters' addresses
      */
     function getDelegatedVoters(address _delegate, uint256 _offset, uint256 _limit) external view returns (address[] memory voters) {
@@ -489,7 +490,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @dev Return the number of delegated voters for the `_delegate`
+    * @dev Return the number of voters who delegated to the `_delegate`
     * @param _delegate Address of the delegate
     * @return Number of `_delegate`'s delegated voters
     */
@@ -499,7 +500,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-     * @notice Return the delegate address assigned to the `_voter`
+     * @notice Return the delegate address of the `_voter`
      * @param _voter Address of the voter
      */
     function getDelegate(address _voter) external view returns (address) {
@@ -523,7 +524,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-     * @notice Return the voting power of the `_voters` at the current block
+     * @notice Return the cumulative voting power of the `_voters` at the current block
      * @param _voters List of voters
      * @return Array of governance token balances
      */
@@ -532,7 +533,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-     * @notice Return the voting power of the `_voters` at the vote #`_voteId` snapshot block
+     * @notice Return the cumulative voting power of the `_voters` at the vote #`_voteId` snapshot block
      * @param _voteId Vote identifier
      * @param _voters List of voters
      * @return Array of governance token balances
@@ -667,7 +668,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-     * @dev Internal function to get the voting power of the `_voters` at the `_blockNumber`
+     * @dev Internal function to get the cumulative voting power of the `_voters` at the `_blockNumber`
      * @param _voters List of voters
      * @param _blockNumber Target block number
      */
@@ -722,7 +723,9 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @dev Internal function to check if the _delegate can vote on behalf of the _voter in the given vote
+    * @dev Internal function to check if the _delegate can vote on behalf of the _voter in the given vote.
+    *      Note that the overpowering is possible both by the delegate's voter themself
+    *      and by a new delegate they might elect while the vote is running.
     * @param vote_ The queried vote
     * @param _delegate Address of the delegate
     * @param _voter Address of the voter
@@ -737,7 +740,8 @@ contract Voting is IForwarder, AragonApp {
         if (delegates[_voter].delegate != _delegate) {
             return false;
         }
-        // Otherwise, the _voter must not have voted directly
+
+        // The _voter must not have voted directly
         VoterState state = vote_.voters[_voter];
         return state != VoterState.Yea && state != VoterState.Nay;
     }
