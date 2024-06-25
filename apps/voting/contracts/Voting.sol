@@ -717,7 +717,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @dev Internal function to check if the vote is open and given option is applicable at the current phase.
+    * @dev Internal function to check if the given option is applicable at the given vote phase.
     *      It assumes the queried vote exists.
     * @param _votePhase The queried vote phase
     * @param _supports Whether the voter supports the vote
