@@ -298,7 +298,8 @@ contract Voting is IForwarder, AragonApp {
 
         bool votedForAtLeastOne = false;
         uint64 voteSnapshotBlock = vote_.snapshotBlock;
-        for (uint256 i = 0; i < _voters.length; ++i) {
+        uint256 votersCount = _voters.length;
+        for (uint256 i = 0; i < votersCount; ++i) {
             address voter = _voters[i];
 
             // In version 0.4.24 of Solidity, for view methods, a regular CALL is used instead of STATICCALL.
