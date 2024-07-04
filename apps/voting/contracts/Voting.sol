@@ -483,7 +483,7 @@ contract Voting is IForwarder, AragonApp {
 
         address[] storage votersList = delegatedVoters[_delegate].addresses;
         uint256 votersCount = votersList.length;
-        if (_offset >= votersCount || votersCount == 0) {
+        if (_offset >= votersCount) {
             return voters;
         }
 
@@ -774,10 +774,8 @@ contract Voting is IForwarder, AragonApp {
         if (timestamp < voteTimeEnd.sub(objectionPhaseTime)) {
             return VotePhase.Main;
         }
-        if (timestamp < voteTimeEnd) {
-            return VotePhase.Objection;
-        }
-        assert(false); // Should never reach this point
+        assert(timestamp < voteTimeEnd);
+        return VotePhase.Objection;
     }
 
     /**
