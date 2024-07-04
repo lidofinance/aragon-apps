@@ -417,17 +417,17 @@ contract Voting is IForwarder, AragonApp {
     /**
     * @dev Return all information for a vote by its ID
     * @param _voteId Vote identifier
-    * @return true if the vote is open
-    * @return Vote executed status
-    * @return Vote start date
-    * @return Vote snapshot block
-    * @return Vote support required
-    * @return Vote minimum acceptance quorum
-    * @return Vote yeas amount
-    * @return Vote nays amount
-    * @return Vote power
-    * @return Vote script
-    * @return Vote phase
+    * @return open True if the vote is open
+    * @return executed Vote executed status
+    * @return startDate Vote start date
+    * @return snapshotBlock Vote snapshot block
+    * @return supportRequired Vote support required
+    * @return minAcceptQuorum Vote minimum acceptance quorum
+    * @return yea Vote yeas amount
+    * @return nay Vote nays amount
+    * @return votingPower Vote power
+    * @return script Vote script
+    * @return phase Vote phase
     */
     function getVote(uint256 _voteId)
         public
@@ -477,7 +477,7 @@ contract Voting is IForwarder, AragonApp {
      * @param _delegate Address of the delegate
      * @param _offset Number of delegated voters from the start of the list to skip
      * @param _limit Maximum number of delegated voters to return. The length of the returned slice can be lower than if the end of the list is reached
-     * @return Array of delegated voters' addresses
+     * @return voters Array of delegated voters' addresses
      */
     function getDelegatedVoters(address _delegate, uint256 _offset, uint256 _limit) external view returns (address[] memory voters) {
         require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
@@ -518,7 +518,7 @@ contract Voting is IForwarder, AragonApp {
      * @notice Return the list of `VoterState` for the `_voters` for the vote #`_voteId`
      * @param _voteId Vote identifier
      * @param _voters List of voters
-     * @return Array of voter states
+     * @return voterStatesList Array of voter states
      */
     function getVoterStateMultipleAtVote(uint256 _voteId, address[] _voters) external view voteExists(_voteId) returns (VoterState[] memory voterStatesList) {
         uint256 votersCount = _voters.length;
@@ -532,7 +532,7 @@ contract Voting is IForwarder, AragonApp {
     /**
      * @notice Return the cumulative voting power of the `_voters` at the current block
      * @param _voters List of voters
-     * @return Array of governance token balances
+     * @return balances Array of governance token balances
      */
     function getVotingPowerMultiple(address[] _voters) external view returns (uint256[] memory balances) {
         return _getVotingPowerMultipleAt(_voters, getBlockNumber64());
@@ -542,7 +542,7 @@ contract Voting is IForwarder, AragonApp {
      * @notice Return the cumulative voting power of the `_voters` at the vote #`_voteId` snapshot block
      * @param _voteId Vote identifier
      * @param _voters List of voters
-     * @return Array of governance token balances
+     * @return balances Array of governance token balances
      */
     function getVotingPowerMultipleAtVote(uint256 _voteId, address[] _voters) external view voteExists(_voteId) returns (uint256[] memory balances) {
         return _getVotingPowerMultipleAt(_voters, votes[_voteId].snapshotBlock);
