@@ -394,7 +394,7 @@ contract Voting is IForwarder, AragonApp {
     *      created via `newVote(),` which requires initialization
     * @param _voteId Vote identifier
     * @param _voter Address of the voter
-    * @return True if the given voter can participate in the main phase of a certain vote
+    * @return True if the given voter can participate in main or objection phase of the vote
     *         both directly and indirectly by a delegate voting for them, false otherwise
     */
     function canVote(uint256 _voteId, address _voter) external view voteExists(_voteId) returns (bool) {
