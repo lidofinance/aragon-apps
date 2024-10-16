@@ -1,0 +1,8 @@
+# IDE Settings
+.vscode
+
+# Local dev config
+accounts.json
+
+# Local artifacts
+tx-deploy-voting_for_upgrade.json

@@ -17,10 +17,23 @@
     "projectId": "INFURA_PROJECT_ID"
   },
   "etherscan": {
-    "apiKey": "ETHERSCAN_API_KEY"
+    "apiKey": "ETHERSCAN_API_KEY",
+    "customChains": [
+      {
+        "network": "holesky",
+        "chainId": 17000,
+        "urls": {
+          "apiURL": "https://api-holesky.etherscan.io/api",
+          "browserURL": "https://holesky.etherscan.io"
+        }
+      }
+    ]
   },
   "infura_ipfs": {
     "projectId": "",
     "projectSecret": ""
+  },
+  "drpc": {
+    "key": "DRPC_KEY"
   }
 }
