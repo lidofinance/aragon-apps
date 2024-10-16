@@ -14,13 +14,13 @@ function normalizeArg(arg) {
     return arg;
 }
 function assertArraysEqualAsSets(actual, expected, errorMsg) {
+    assert.equal(actual.length, expected.length, errorMsg || "Arrays do not have the same length.");
+
     actual = actual.map(normalizeArg);
     expected = expected.map(normalizeArg);
 
     const setActual = new Set(actual);
     const setExpected = new Set(expected);
-
-    assert.equal(setActual.size, setExpected.size, errorMsg || "Arrays do not have the same length.");
 
     setActual.forEach(item => {
         assert.isTrue(setExpected.has(item), errorMsg || "Arrays do not match as sets.");

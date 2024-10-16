@@ -23,8 +23,8 @@ contract Voting is IForwarder, AragonApp {
     bytes32 public constant UNSAFELY_MODIFY_VOTE_TIME_ROLE = keccak256("UNSAFELY_MODIFY_VOTE_TIME_ROLE");
 
     uint64 public constant PCT_BASE = 10 ** 18; // 0% = 0; 1% = 10^16; 100% = 10^18
+    uint256 private constant UINT_96_MAX = 2 ** 96 - 1;
 
-    uint256 private constant UINT_96_MAX = 0xFFFFFFFFFFFFFFFFFFFFFFFF;
     string private constant ERROR_NO_VOTE = "VOTING_NO_VOTE";
     string private constant ERROR_INIT_PCTS = "VOTING_INIT_PCTS";
     string private constant ERROR_CHANGE_SUPPORT_PCTS = "VOTING_CHANGE_SUPPORT_PCTS";
@@ -43,11 +43,15 @@ contract Voting is IForwarder, AragonApp {
     string private constant ERROR_DELEGATE_NOT_SET = "VOTING_DELEGATE_NOT_SET";
     string private constant ERROR_SELF_DELEGATE = "VOTING_SELF_DELEGATE";
     string private constant ERROR_DELEGATE_SAME_AS_PREV = "VOTING_DELEGATE_SAME_AS_PREV";
-    string private constant ERROR_INVALID_LIMIT = "VOTING_INVALID_LIMIT";
-    string private constant ERROR_INVALID_OFFSET = "VOTING_INVALID_OFFSET";
     string private constant ERROR_MAX_DELEGATED_VOTERS_REACHED = "VOTING_MAX_DELEGATED_VOTERS_REACHED";
 
-    enum VoterState { Absent, Yea, Nay, DelegateYea, DelegateNay }
+    enum VoterState {
+        Absent, // Voter has not voted
+        Yea, // Voter has voted for
+        Nay, // Voter has voted against
+        DelegateYea, // Delegate has voted for on behalf of the voter
+        DelegateNay // Delegate has voted against on behalf of the voter
+    }
 
     enum VotePhase { Main, Objection, Closed }
 
@@ -64,7 +68,7 @@ contract Voting is IForwarder, AragonApp {
         mapping (address => VoterState) voters;
     }
 
-    struct DelegatedAddressList {
+    struct DelegatedVoters {
         address[] addresses;
     }
 
@@ -83,10 +87,8 @@ contract Voting is IForwarder, AragonApp {
     uint256 public votesLength;
     uint64 public objectionPhaseTime;
 
-    // delegate -> [delegated voter address]
-    mapping(address => DelegatedAddressList) private delegatedVoters;
-    // voter -> delegate
-    mapping(address => Delegate) private delegates;
+    mapping(address /* delegate */ => DelegatedVoters) private delegatedVoters;
+    mapping(address /* voter */ => Delegate) private delegates;
 
     event StartVote(uint256 indexed voteId, address indexed creator, string metadata);
     event CastVote(uint256 indexed voteId, address indexed voter, bool supports, uint256 stake);
@@ -96,9 +98,13 @@ contract Voting is IForwarder, AragonApp {
     event ChangeMinQuorum(uint64 minAcceptQuorumPct);
     event ChangeVoteTime(uint64 voteTime);
     event ChangeObjectionPhaseTime(uint64 objectionPhaseTime);
-    event SetDelegate(address indexed voter, address indexed delegate);
-    event ResetDelegate(address indexed voter, address indexed delegate);
-    event CastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, address indexed voter, bool supports, uint256 stake);
+    event AssignDelegate(address indexed voter, address indexed assignedDelegate);
+    event UnassignDelegate(address indexed voter, address indexed unassignedDelegate);
+
+    // IMPORTANT: The voters array contains ALL voters the vote was attempted.
+    // It's not possible to distinguish successful and skipped votes based only on this event.
+    // See the `attemptVoteForMultiple` method for details.
+    event AttemptCastVoteAsDelegate(uint256 indexed voteId, address indexed delegate, address[] voters);
 
     modifier voteExists(uint256 _voteId) {
         require(_voteId < votesLength, ERROR_NO_VOTE);
@@ -204,7 +210,7 @@ contract Voting is IForwarder, AragonApp {
     * @param _metadata Vote metadata
     * @dev _castVote_deprecated Whether to also cast newly created vote - DEPRECATED
     * @dev _executesIfDecided_deprecated Whether to also immediately execute newly created vote if decided - DEPRECATED
-    * @return voteId id for newly created vote
+    * @return voteId Id for newly created vote
     */
     function newVote(bytes _executionScript, string _metadata, bool /* _castVote_deprecated */, bool /* _executesIfDecided_deprecated */)
         external
@@ -219,32 +225,38 @@ contract Voting is IForwarder, AragonApp {
     * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
     *      created via `newVote(),` which requires initialization
     * @dev  _executesIfDecided was deprecated to introduce a proper lock period between decision and execution.
-    * @param _voteId Id for vote
+    * @param _voteId Vote identifier
     * @param _supports Whether voter supports the vote
     * @dev _executesIfDecided_deprecated Whether the vote should execute its action if it becomes decided - DEPRECATED
     */
     function vote(uint256 _voteId, bool _supports, bool /* _executesIfDecided_deprecated */) external voteExists(_voteId) {
         Vote storage vote_ = votes[_voteId];
-        require(_isValidPhaseToVote(vote_, _supports), ERROR_CAN_NOT_VOTE);
-        require(_hasVotingPower(vote_, msg.sender), ERROR_NO_VOTING_POWER);
-        _vote(_voteId, _supports, msg.sender, false);
+        VotePhase votePhase = _getVotePhase(vote_);
+        require(_isValidPhaseToVote(votePhase, _supports), ERROR_CAN_NOT_VOTE);
+
+        // In version 0.4.24 of Solidity, for view methods, a regular CALL is used instead of STATICCALL.
+        // This allows for the possibility of reentrance from the governance token.
+        // However, we strongly assume here that the governance token is not malicious.
+        uint256 votingPower = token.balanceOfAt(msg.sender, vote_.snapshotBlock);
+        require(votingPower > 0, ERROR_NO_VOTING_POWER);
+        _vote(_voteId, votePhase, /* voter */ msg.sender, _supports, votingPower, /* isDelegate */ false);
     }
 
     /**
     * @notice Execute vote #`_voteId`
     * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
     *      created via `newVote(),` which requires initialization
-    * @param _voteId Id for vote
+    * @param _voteId Vote identifier
     */
     function executeVote(uint256 _voteId) external voteExists(_voteId) {
         _executeVote(_voteId);
     }
 
     /**
-    * @notice Assign `_delegate` as the delegate for the sender
-    * @param _delegate address to delegate to
+    * @notice Assign `_delegate` as the sender's delegate, allowing `_delegate` to vote on behalf of the sender
+    * @param _delegate Address of the account to delegate to
     */
-    function setDelegate(address _delegate) external {
+    function assignDelegate(address _delegate) external {
         require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
         require(_delegate != msg.sender, ERROR_SELF_DELEGATE);
 
@@ -258,56 +270,81 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @notice Unassign `_delegate` from the sender
+    * @notice Unassign `_delegate` from the sender and remove the sender from the `_delegate`'s list of delegated addresses
     */
-    function resetDelegate() external {
+    function unassignDelegate() external {
         address prevDelegate = delegates[msg.sender].delegate;
         require(prevDelegate != address(0), ERROR_DELEGATE_NOT_SET);
 
         _removeDelegatedAddressFor(prevDelegate, msg.sender);
-        delete delegates[msg.sender];
     }
 
     /**
-     * @notice Vote `_supports ? 'yes' : 'no'` in vote #`_voteId` on behalf of the `_voters` list
-     * @param _voteId Id for vote
+     * @notice Vote `_supports ? 'yes' : 'no'` in vote #`_voteId` on behalf of the `_voters` list.
+     *         Each voter from the list must have assigned the sender as their delegate with `assignDelegate`.
+     * @dev By the delegation mechanism design, it is possible for a misbehaving voter to front-run a delegate by voting
+     *      or unassigning the delegation before the delegate's vote. That is why checks of the address belonging to
+     *      the list of delegated voters and the voter's state are unstrict, hence the "attempt" word in the function name.
+     *      The voter's voting power is being fetched at the vote's snapshot block, making moving voting power
+     *      from one address to another worthless in the sense of harming the delegate's actions during the vote.
+     * @param _voteId Vote identifier
      * @param _supports Whether the delegate supports the vote
-     * @param _voters list of voters
+     * @param _voters List of voters
      */
     function attemptVoteForMultiple(uint256 _voteId, bool _supports, address[] _voters) public voteExists(_voteId) {
         Vote storage vote_ = votes[_voteId];
-        require(_isValidPhaseToVote(vote_, _supports), ERROR_CAN_NOT_VOTE);
-        bool hasManagedToVote = false;
+        VotePhase votePhase = _getVotePhase(vote_);
+        require(_isValidPhaseToVote(votePhase, _supports), ERROR_CAN_NOT_VOTE);
 
-        address voter;
-        for (uint256 i = 0; i < _voters.length; ++i) {
-            voter = _voters[i];
-            require(_hasVotingPower(vote_, voter), ERROR_NO_VOTING_POWER);
-            if (_canVoteFor(vote_, msg.sender, voter)) {
-                _vote(_voteId, _supports, voter, true);
-                hasManagedToVote = true;
+        bool votedForAtLeastOne = false;
+        uint64 voteSnapshotBlock = vote_.snapshotBlock;
+        uint256 votersCount = _voters.length;
+        for (uint256 i = 0; i < votersCount; ++i) {
+            address voter = _voters[i];
+
+            // In version 0.4.24 of Solidity, for view methods, a regular CALL is used instead of STATICCALL.
+            // This allows for the possibility of reentrance from the governance token.
+            // However, we strongly assume here that the governance token is not malicious.
+            uint256 votingPower = token.balanceOfAt(voter, voteSnapshotBlock);
+
+            // A strict check for balance was introduced to have a persistent logic with the `vote` method.
+            // It's not possible to front-run the voting attempt with balance manipulation since the balances are being checked at the vote's snapshot block
+            require(votingPower > 0, ERROR_NO_VOTING_POWER);
+            // The _canVoteFor() check below does not revert to avoid a situation where a voter votes by themselves
+            // or undelegates previously delegated voting power before the delegate sends a transaction. This approach
+            // helps protect the entire transaction from failing due to the actions of a single misbehaving voter.
+            if (_canVoteFor(vote_, voter, msg.sender)) {
+                _vote(_voteId, votePhase, voter, _supports, votingPower, /* isDelegate */ true);
+                votedForAtLeastOne = true;
             }
         }
+        require(votedForAtLeastOne, ERROR_CAN_NOT_VOTE_FOR);
 
-        require(hasManagedToVote, ERROR_CAN_NOT_VOTE_FOR);
+        // IMPORTANT: The voters array contains ALL voters the vote was attempted.
+        // It's not possible to distinguish successful and skipped votes based only on this event.
+        // To filter votes, use this event along with the `CastVote` event, which is emitted for each successful voting attempt.
+        emit AttemptCastVoteAsDelegate(_voteId, msg.sender, _voters);
     }
 
     /**
-     * @notice Vote `_supports ? 'yes' : 'no'` in vote #`_voteId` on behalf of the `_voter`
-     * @param _voteId Id for vote
+     * @notice Vote `_supports ? 'yes' : 'no'` in vote #`_voteId` on behalf of the `_voter`.
+     *         The `_voter` must have assigned the sender as their delegate with `assignDelegate`.
+     * @param _voteId Vote identifier
      * @param _supports Whether the delegate supports the vote
-     * @param _voter address of the voter
+     * @param _voter Address of the voter
      */
-    function attemptVoteFor(uint256 _voteId, bool _supports, address _voter) external voteExists(_voteId) {
+    function attemptVoteFor(uint256 _voteId, bool _supports, address _voter) external {
         address[] memory voters = new address[](1);
         voters[0] = _voter;
         attemptVoteForMultiple(_voteId, _supports, voters);
     }
 
-    // Forwarding fns
+    // ---
+    // FORWARDING METHODS
+    // ---
 
     /**
-    * @notice Tells whether the Voting app is a forwarder or not
+    * @notice Tells whether the Voting app is a forwarder
     * @dev IForwarder interface conformance
     * @return Always true
     */
@@ -326,7 +363,7 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @notice Tells whether `_sender` can forward actions or not
+    * @notice Tells whether `_sender` can forward actions
     * @dev IForwarder interface conformance
     * @param _sender Address of the account intending to forward an action
     * @return True if the given address can create votes, false otherwise
@@ -336,10 +373,12 @@ contract Voting is IForwarder, AragonApp {
         return canPerform(_sender, CREATE_VOTES_ROLE, arr());
     }
 
-    // Getter fns
+    // ---
+    // GETTER METHODS
+    // ---
 
     /**
-    * @notice Tells whether a vote #`_voteId` can be executed or not
+    * @notice Tells whether a vote #`_voteId` can be executed
     * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
     *      created via `newVote(),` which requires initialization
     * @param _voteId Vote identifier
@@ -354,12 +393,14 @@ contract Voting is IForwarder, AragonApp {
     * @dev Initialization check is implicitly provided by `voteExists()` as new votes can only be
     *      created via `newVote(),` which requires initialization
     * @param _voteId Vote identifier
-    * @param _voter address of the voter to check
-    * @return True if the given voter can participate in the main phase of a certain vote, false otherwise
+    * @param _voter Address of the voter
+    * @return True if the given voter can participate in main or objection phase of the vote
+    *         both directly and indirectly by a delegate voting for them, false otherwise
     */
     function canVote(uint256 _voteId, address _voter) external view voteExists(_voteId) returns (bool) {
         Vote storage vote_ = votes[_voteId];
-        return _isVoteOpen(vote_) && _hasVotingPower(vote_, _voter);
+        uint256 votingPower = token.balanceOfAt(_voter, vote_.snapshotBlock);
+        return _getVotePhase(vote_) != VotePhase.Closed && votingPower > 0;
     }
 
     /**
@@ -376,17 +417,17 @@ contract Voting is IForwarder, AragonApp {
     /**
     * @dev Return all information for a vote by its ID
     * @param _voteId Vote identifier
-    * @return true if the vote is open
-    * @return Vote executed status
-    * @return Vote start date
-    * @return Vote snapshot block
-    * @return Vote support required
-    * @return Vote minimum acceptance quorum
-    * @return Vote yeas amount
-    * @return Vote nays amount
-    * @return Vote power
-    * @return Vote script
-    * @return Vote phase
+    * @return open True if the vote is open
+    * @return executed Vote executed status
+    * @return startDate Vote start date
+    * @return snapshotBlock Vote snapshot block
+    * @return supportRequired Vote support required
+    * @return minAcceptQuorum Vote minimum acceptance quorum
+    * @return yea Vote yeas amount
+    * @return nay Vote nays amount
+    * @return votingPower Vote power
+    * @return script Vote script
+    * @return phase Vote phase
     */
     function getVote(uint256 _voteId)
         public
@@ -408,7 +449,6 @@ contract Voting is IForwarder, AragonApp {
     {
         Vote storage vote_ = votes[_voteId];
 
-        open = _isVoteOpen(vote_);
         executed = vote_.executed;
         startDate = vote_.startDate;
         snapshotBlock = vote_.snapshotBlock;
@@ -419,12 +459,13 @@ contract Voting is IForwarder, AragonApp {
         votingPower = vote_.votingPower;
         script = vote_.executionScript;
         phase = _getVotePhase(vote_);
+        open = phase != VotePhase.Closed;
     }
 
     /**
     * @dev Return the state of a voter for a given vote by its ID
     * @param _voteId Vote identifier
-    * @param _voter address of the voter
+    * @param _voter Address of the voter
     * @return VoterState of the requested voter for a certain vote
     */
     function getVoterState(uint256 _voteId, address _voter) external view voteExists(_voteId) returns (VoterState) {
@@ -432,34 +473,32 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-     * @notice Return the sliced list of delegated voters for `_delegate` and their voting power at the current block
-     * @param _delegate the address of the delegate
-     * @param _offset the number of delegated voters from the start of the list to skip
-     * @param _limit the number of delegated voters to return
-     * @return the array of delegated voters
-     * @return the array of voting power of delegated voters
+     * @notice Return the sliced list of voters who delegated to the `_delegate`
+     * @param _delegate Address of the delegate
+     * @param _offset Number of delegated voters from the start of the list to skip
+     * @param _limit Maximum number of delegated voters to return. The length of the returned slice can be lower than if the end of the list is reached
+     * @return voters Array of delegated voters' addresses
      */
-    function getDelegatedVoters(address _delegate, uint256 _offset, uint256 _limit) external view returns (address[] memory, uint256[] memory) {
-        return _getDelegatedVotersAt(_delegate, _offset, _limit, getBlockNumber64());
+    function getDelegatedVoters(address _delegate, uint256 _offset, uint256 _limit) external view returns (address[] memory voters) {
+        require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
+
+        address[] storage votersList = delegatedVoters[_delegate].addresses;
+        uint256 votersCount = votersList.length;
+        if (_offset >= votersCount) {
+            return voters;
+        }
+
+        uint256 returnCount = _offset.add(_limit) > votersCount ? votersCount.sub(_offset) : _limit;
+        voters = new address[](returnCount);
+        for (uint256 i = 0; i < returnCount; ++i) {
+            voters[i] = votersList[_offset + i];
+        }
     }
 
     /**
-     * @notice Return the sliced list of delegated voters for `_delegate` and their voting power at the `_voteId` snapshot block
-     * @param _delegate the address of the delegate
-     * @param _offset the number of delegated voters from the start of the list to skip
-     * @param _limit the number of delegated voters to return
-     * @return the array of delegated voters
-     * @return the array of voting power of delegated voters
-     */
-    function getDelegatedVotersAtVote(address _delegate, uint256 _offset, uint256 _limit, uint256 _voteId) external view voteExists(_voteId) returns (address[] memory, uint256[] memory) {
-        Vote storage vote_ = votes[_voteId];
-        return _getDelegatedVotersAt(_delegate, _offset, _limit, vote_.snapshotBlock);
-    }
-
-    /**
-    * @dev Return the number of delegated voters for the `_delegate`
-    * @param _delegate address of the delegate
-    * @return the number of delegated voters
+    * @dev Return the number of voters who delegated to the `_delegate`
+    * @param _delegate Address of the delegate
+    * @return Number of `_delegate`'s delegated voters
     */
     function getDelegatedVotersCount(address _delegate) external view returns (uint256) {
         require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
@@ -467,8 +506,8 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-     * @notice Return the delegate address assigned to the `_voter`
-     * @param _voter the address of the voter
+     * @notice Return the delegate address of the `_voter`
+     * @param _voter Address of the voter
      */
     function getDelegate(address _voter) external view returns (address) {
         require(_voter != address(0), ERROR_ZERO_ADDRESS_PASSED);
@@ -477,10 +516,11 @@ contract Voting is IForwarder, AragonApp {
 
     /**
      * @notice Return the list of `VoterState` for the `_voters` for the vote #`_voteId`
-     * @param _voters the list of voters
      * @param _voteId Vote identifier
+     * @param _voters List of voters
+     * @return voterStatesList Array of voter states
      */
-    function getVotersStateAtVote(uint256 _voteId, address[] _voters) external view voteExists(_voteId) returns (VoterState[] memory voterStatesList) {
+    function getVoterStateMultipleAtVote(uint256 _voteId, address[] _voters) external view voteExists(_voteId) returns (VoterState[] memory voterStatesList) {
         uint256 votersCount = _voters.length;
         voterStatesList = new VoterState[](votersCount);
         Vote storage vote_ = votes[_voteId];
@@ -489,7 +529,28 @@ contract Voting is IForwarder, AragonApp {
         }
     }
 
-    // Internal fns
+    /**
+     * @notice Return the cumulative voting power of the `_voters` at the current block
+     * @param _voters List of voters
+     * @return balances Array of governance token balances
+     */
+    function getVotingPowerMultiple(address[] _voters) external view returns (uint256[] memory balances) {
+        return _getVotingPowerMultipleAt(_voters, getBlockNumber64());
+    }
+
+    /**
+     * @notice Return the cumulative voting power of the `_voters` at the vote #`_voteId` snapshot block
+     * @param _voteId Vote identifier
+     * @param _voters List of voters
+     * @return balances Array of governance token balances
+     */
+    function getVotingPowerMultipleAtVote(uint256 _voteId, address[] _voters) external view voteExists(_voteId) returns (uint256[] memory balances) {
+        return _getVotingPowerMultipleAt(_voters, votes[_voteId].snapshotBlock);
+    }
+
+    // ---
+    // INTERNAL METHODS
+    // ---
 
     /**
     * @dev Internal function to create a new vote
@@ -518,47 +579,43 @@ contract Voting is IForwarder, AragonApp {
     /**
      * @dev Internal function to cast a vote or object to.
      * @dev It assumes that voter can support or object to the vote
-     * @param _voteId The identifier of the vote
-     * @param _supports Whether the voter supports the vote or not
-     * @param _voter The address of the voter
-     * @param _isDelegate Whether the voter is a delegate or not
+     * @param _voteId Vote identifier
+     * @param _supports Whether the voter supports the vote
+     * @param _voter Address of the voter
+     * @param _isDelegate Whether the voter is a delegate
      */
-    function _vote(uint256 _voteId, bool _supports, address _voter, bool _isDelegate) internal {
+    function _vote(uint256 _voteId, VotePhase _votePhase, address _voter, bool _supports, uint256 _votingPower, bool _isDelegate) internal {
         Vote storage vote_ = votes[_voteId];
-
-        // This could re-enter, though we can assume the governance token is not malicious
-        uint256 voterStake = token.balanceOfAt(_voter, vote_.snapshotBlock);
         VoterState state = vote_.voters[_voter];
 
-        // If voter had previously voted, decrease count
-        if (state == VoterState.Yea || state == VoterState.DelegateYea) {
-            vote_.yea = vote_.yea.sub(voterStake);
-        } else if (state == VoterState.Nay || state == VoterState.DelegateNay) {
-            vote_.nay = vote_.nay.sub(voterStake);
+        // If voter had previously voted, decrease count.
+        // Since the most common case is voter voting once, the additional check here works as a gas optimization.
+        if (state != VoterState.Absent) {
+            if (state == VoterState.Yea || state == VoterState.DelegateYea) {
+                vote_.yea = vote_.yea.sub(_votingPower);
+            } else { // Remaining states are Nay and DelegateNay
+                vote_.nay = vote_.nay.sub(_votingPower);
+            }
         }
 
         if (_supports) {
-            vote_.yea = vote_.yea.add(voterStake);
+            vote_.yea = vote_.yea.add(_votingPower);
             vote_.voters[_voter] = _isDelegate ? VoterState.DelegateYea : VoterState.Yea;
         } else {
-            vote_.nay = vote_.nay.add(voterStake);
+            vote_.nay = vote_.nay.add(_votingPower);
             vote_.voters[_voter] = _isDelegate ? VoterState.DelegateNay : VoterState.Nay;
         }
 
-        emit CastVote(_voteId, _voter, _supports, voterStake);
+        emit CastVote(_voteId, _voter, _supports, _votingPower);
 
-        if (_getVotePhase(vote_) == VotePhase.Objection) {
-            emit CastObjection(_voteId, _voter, voterStake);
-        }
-
-        if (_isDelegate) {
-            emit CastVoteAsDelegate(_voteId, msg.sender, _voter, _supports, voterStake);
+        if (_votePhase == VotePhase.Objection) {
+            emit CastObjection(_voteId, _voter, _votingPower);
         }
     }
 
     /**
     * @dev Internal function to execute a vote. It assumes the queried vote exists.
-    * @param _voteId The identifier of the vote
+    * @param _voteId Vote identifier
     */
     function _executeVote(uint256 _voteId) internal {
         require(_canExecute(_voteId), ERROR_CAN_NOT_EXECUTE);
@@ -567,7 +624,7 @@ contract Voting is IForwarder, AragonApp {
 
     /**
     * @dev Unsafe version of _executeVote that assumes you have already checked if the vote can be executed and exists
-    * @param _voteId The identifier of the vote
+    * @param _voteId Vote identifier
     */
     function _unsafeExecuteVote(uint256 _voteId) internal {
         Vote storage vote_ = votes[_voteId];
@@ -582,71 +639,56 @@ contract Voting is IForwarder, AragonApp {
 
     /**
      * @dev internal function to add the `_voter` to the list of delegated voters for the `_delegate` and update the delegate for the `_voter`
-     * @param _delegate address of the delegate
-     * @param _voter address of the voter
+     * @param _delegate Address of the delegate
+     * @param _voter Address of the voter
      */
     function _addDelegatedAddressFor(address _delegate, address _voter) internal {
-        uint256 delegatedVotersCount = delegatedVoters[_delegate].addresses.length;
+        address[] storage votersList = delegatedVoters[_delegate].addresses;
+        uint256 delegatedVotersCount = votersList.length;
         require(delegatedVotersCount <= UINT_96_MAX, ERROR_MAX_DELEGATED_VOTERS_REACHED);
 
-        delegatedVoters[_delegate].addresses.push(_voter);
+        votersList.push(_voter);
         delegates[_voter] = Delegate(_delegate, uint96(delegatedVotersCount));
-        emit SetDelegate(_voter, _delegate);
+        emit AssignDelegate(_voter, _delegate);
     }
 
     /**
      * @dev internal function to remove  the `_voter` from the list of delegated voters for the `_delegate`
-     * @param _delegate address of the delegate
-     * @param _voter address of the voter
+     * @param _delegate Address of the delegate
+     * @param _voter Address of the voter
      */
     function _removeDelegatedAddressFor(address _delegate, address _voter) internal {
-        uint256 delegatedVotersCount = delegatedVoters[_delegate].addresses.length;
-        require(delegatedVotersCount > 0, ERROR_DELEGATE_NOT_SET);
-
         uint96 voterIndex = delegates[_voter].voterIndex;
-        assert(delegatedVoters[_delegate].addresses[voterIndex] == _voter);
-        address lastVoter = delegatedVoters[_delegate].addresses[delegatedVotersCount - 1];
-        if (voterIndex < delegatedVotersCount - 1) {
-            delegatedVoters[_delegate].addresses[voterIndex] = lastVoter;
+        address[] storage votersList = delegatedVoters[_delegate].addresses;
+        assert(votersList[voterIndex] == _voter);
+
+        uint256 lastVoterIndex = votersList.length - 1;
+        if (voterIndex < lastVoterIndex) {
+            address lastVoter = votersList[lastVoterIndex];
+            votersList[voterIndex] = lastVoter;
             delegates[lastVoter].voterIndex = voterIndex;
         }
-        delegatedVoters[_delegate].addresses.length--;
-        emit ResetDelegate(_voter, _delegate);
+        votersList.length--;
+        delete delegates[_voter];
+        emit UnassignDelegate(_voter, _delegate);
     }
 
     /**
-     * @notice Return the sliced list of delegated voters for `_delegate` and their voting power at the `_blockNumber`
-     * @param _delegate the address of the delegate
-     * @param _offset the number of delegated voters from the start of the list to skip
-     * @param _limit the number of delegated voters to return
-     * @param _blockNumber the block number to get the voting power
-     * @return the array of delegated voters
-     * @return the array of voting power of delegated voters
+     * @dev Internal function to get the cumulative voting power of the `_voters` at the `_blockNumber`
+     * @param _voters List of voters
+     * @param _blockNumber Target block number
      */
-    function _getDelegatedVotersAt(address _delegate, uint256 _offset, uint256 _limit, uint256 _blockNumber) internal view returns (address[] memory votersList, uint256[] memory votingPowerList) {
-        require(_delegate != address(0), ERROR_ZERO_ADDRESS_PASSED);
-        require(_limit > 0, ERROR_INVALID_LIMIT);
-        uint256 delegatedVotersCount = delegatedVoters[_delegate].addresses.length;
-        if (delegatedVotersCount == 0) {
-            return (votersList, votingPowerList);
+    function _getVotingPowerMultipleAt(address[] _voters, uint256 _blockNumber) internal view returns (uint256[] memory balances) {
+        uint256 votersCount = _voters.length;
+        balances = new uint256[](votersCount);
+        for (uint256 i = 0; i < votersCount; ++i) {
+            balances[i] = token.balanceOfAt(_voters[i], _blockNumber);
         }
-        require(_offset < delegatedVotersCount, ERROR_INVALID_OFFSET);
-
-        uint256 returnCount = _offset.add(_limit) > delegatedVotersCount ? delegatedVotersCount.sub(_offset) : _limit;
-        votersList = new address[](returnCount);
-        votingPowerList = new uint256[](returnCount);
-        address voter;
-        for (uint256 i = 0; i < returnCount; ++i) {
-            voter = delegatedVoters[_delegate].addresses[_offset + i];
-            votersList[i] = voter;
-            votingPowerList[i] = token.balanceOfAt(voter, _blockNumber);
-        }
-        return (votersList, votingPowerList);
     }
 
     /**
     * @dev Internal function to check if a vote can be executed. It assumes the queried vote exists.
-    * @param _voteId The identifier of the vote
+    * @param _voteId Vote identifier
     * @return True if the given vote can be executed, false otherwise
     */
     function _canExecute(uint256 _voteId) internal view returns (bool) {
@@ -657,7 +699,7 @@ contract Voting is IForwarder, AragonApp {
         }
 
         // Vote ended?
-        if (_isVoteOpen(vote_)) {
+        if (_getVotePhase(vote_) != VotePhase.Closed) {
             return false;
         }
 
@@ -676,59 +718,47 @@ contract Voting is IForwarder, AragonApp {
     }
 
     /**
-    * @dev Internal function to check if the vote is open and given option is applicable at the current phase.
+    * @dev Internal function to check if the given option is applicable at the given vote phase.
     *      It assumes the queried vote exists.
-    * @param vote_ The queried vote
-    * @param _supports Whether the voter supports the vote or not
+    * @param _votePhase The queried vote phase
+    * @param _supports Whether the voter supports the vote
     * @return True if the given voter can participate a certain vote, false otherwise
     */
-    function _isValidPhaseToVote(Vote storage vote_, bool _supports) internal view returns (bool) {
-        return _isVoteOpen(vote_) && (!_supports || _getVotePhase(vote_) == VotePhase.Main);
+    function _isValidPhaseToVote(VotePhase _votePhase, bool _supports) internal pure returns (bool) {
+        // In the Main phase both Yea and Nay votes are allowed
+        if (_votePhase == VotePhase.Main) {
+            return true;
+        }
+        // During the Objection phase only Nay votes are allowed
+        if (_votePhase == VotePhase.Objection) {
+            return !_supports;
+        }
+        // It's not allowed to vote in any other cases
+        return false;
     }
 
     /**
-    * @dev Internal function to check if the _delegate is a current delegate for the _voter
-    * @param _delegate address of the delegate
-    * @param _voter address of the voter
-    * @return True if _delegate is a current delegate for the _voter, false otherwise
+    * @dev Internal function to check if the _delegate can vote on behalf of the _voter in the given vote.
+    *      Note that the overpowering is possible both by the delegate's voter themself
+    *      and by a new delegate they might elect while the vote is running.
+    * @param vote_ The queried vote
+    * @param _delegate Address of the delegate
+    * @param _voter Address of the voter
+    * @return True if the _delegate can vote on behalf of the _voter in the given vote, false otherwise
     */
-    function _isDelegateFor(address _delegate, address _voter) internal view returns (bool) {
+    function _canVoteFor(Vote storage vote_, address _voter, address _delegate) internal view returns (bool) {
+        // Zero addresses are not allowed
         if (_delegate == address(0) || _voter == address(0)) {
             return false;
         }
-        return delegates[_voter].delegate == _delegate;
-    }
+        // The _delegate must be a delegate for the _voter
+        if (delegates[_voter].delegate != _delegate) {
+            return false;
+        }
 
-    /**
-    * @dev Internal function to check if the _delegate can vote on behalf of the _voter in the given vote
-    * @param vote_ The queried vote
-    * @param _delegate address of the delegate
-    * @param _voter address of the voter
-    * @return True if the _delegate can vote on behalf of the _voter in the given vote, false otherwise
-    */
-    function _canVoteFor(Vote storage vote_, address _delegate, address _voter) internal view returns (bool) {
-        return _isDelegateFor(_delegate, _voter) && !_hasVotedDirectly(vote_, _voter);
-    }
-
-    /**
-    * @dev Internal function to check if the _voter has voted by themselves in the given vote
-    * @param vote_ The queried vote
-    * @param _voter address of the voter
-    * @return True if the _voter has voted by themselves in the given vote, false otherwise
-    */
-    function _hasVotedDirectly(Vote storage vote_, address _voter) internal view returns (bool) {
+        // The _voter must not have voted directly
         VoterState state = vote_.voters[_voter];
-        return state == VoterState.Yea || state == VoterState.Nay;
-    }
-
-    /**
-    * @dev Internal function to get the voter's token balance at the vote's snapshot block
-    * @param vote_ The queried vote
-    * @param _voter address of the voter
-    * @return The voter's token balance at the vote's snapshot block
-    */
-    function _hasVotingPower(Vote storage vote_, address _voter) internal view returns (bool) {
-        return token.balanceOfAt(_voter, vote_.snapshotBlock) > 0;
+        return state != VoterState.Yea && state != VoterState.Nay;
     }
 
     /**
@@ -739,22 +769,14 @@ contract Voting is IForwarder, AragonApp {
     function _getVotePhase(Vote storage vote_) internal view returns (VotePhase) {
         uint64 timestamp = getTimestamp64();
         uint64 voteTimeEnd = vote_.startDate.add(voteTime);
+        if (timestamp >= voteTimeEnd || vote_.executed) {
+            return VotePhase.Closed;
+        }
         if (timestamp < voteTimeEnd.sub(objectionPhaseTime)) {
             return VotePhase.Main;
         }
-        if (timestamp < voteTimeEnd) {
-            return VotePhase.Objection;
-        }
-        return VotePhase.Closed;
-    }
-
-    /**
-    * @dev Internal function to check if a vote is still open for both support and objection
-    * @param vote_ The queried vote
-    * @return True if less than voteTime has passed since the vote start
-    */
-    function _isVoteOpen(Vote storage vote_) internal view returns (bool) {
-        return getTimestamp64() < vote_.startDate.add(voteTime) && !vote_.executed;
+        assert(timestamp < voteTimeEnd);
+        return VotePhase.Objection;
     }
 
     /**
