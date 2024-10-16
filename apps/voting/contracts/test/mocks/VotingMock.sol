@@ -18,7 +18,7 @@ contract VotingMock is Voting, TimeHelpersMock {
         token.generateTokens(_holder, _tokenAmount);
 
         bytes memory noScript = new bytes(0);
-        voteId = _newVote(noScript, _metadata, false);
+        voteId = _newVote(noScript, _metadata);
         emit StartVote(voteId, msg.sender, _metadata);
     }
 }
