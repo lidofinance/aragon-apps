@@ -1,4 +1,3 @@
----
 name: Verify deployed contracts' bytecode
 
 on:
@@ -23,10 +22,16 @@ jobs:
       - name: Install dependencies
         run: yarn
 
+      # Add cache cleanup step
+      - name: Clean compiler cache
+        run: rm -rf ~/.cache/buidler-nodejs/compilers
+
+      # Modify compile step with memory settings
       - name: Compile contracts
-        run: >
+        run: |
+          export NODE_OPTIONS="--max-old-space-size=4096 --stack-size=3000"
           jq -r '.scripts?.compile | strings | input_filename' apps/*/package.json |
-          xargs dirname | xargs -I% sh -c "echo % && cd % && yarn compile"
+          xargs dirname | xargs -I% sh -c "echo % && cd % && NODE_OPTIONS='--max-old-space-size=4096 --stack-size=3000' yarn compile"
 
       - name: Verify bytecode of contracts
         uses: lidofinance/action-verify-bytecode@master
