@@ -18,14 +18,14 @@ jobs:
       - name: Install nodejs
         uses: actions/setup-node@v3
         with:
-          node-version: 14
+          node-version: 18
 
       - name: Install dependencies
         run: yarn
 
       - name: Compile contracts
         run: >
-          jq -r '.scripts?.compile | strings | input_filename' apps/*/package.json |
+          jq -r '.scripts?.compile | select(contains("hardhat")) | input_filename' apps/*/package.json |
           xargs dirname | xargs -I% sh -c "echo % && cd % && yarn compile"
 
       - name: Verify bytecode of contracts
